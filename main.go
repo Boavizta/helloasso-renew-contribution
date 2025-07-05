@@ -18,6 +18,12 @@ const EnglishId = 2590
 const FrenchId = 2591
 const SpanishId = 2592
 
+// Members to check & update - merge lastPayments with members using email
+type MemberPaymentPair struct {
+	Member  baserow.Member
+	Payment helloasso.Payment
+}
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
@@ -61,7 +67,7 @@ func main() {
 
 	logger.Info("Unique emails with most recent payment data", "count", len(uniquePayments))
 
-	//TODO 1. compare & update with baserow - https://baserow.io/docs/apis%2Frest-api
+	// 1. compare & update with baserow - https://baserow.io/docs/apis%2Frest-api
 	// Fetch members from Baserow
 	logger.Info("Fetching members from Baserow")
 	members, err := baserow.GetMembers()
@@ -82,12 +88,6 @@ func main() {
 	paymentsByEmail := lo.KeyBy(uniquePayments, func(payment helloasso.Payment) string {
 		return payment.PayerEmail
 	})
-
-	// Members to check & update - merge lastPayments with members using email
-	type MemberPaymentPair struct {
-		Member  baserow.Member
-		Payment helloasso.Payment
-	}
 
 	// Use lo.FilterMap to create membersWithPayment
 	membersWithPayment := lo.FilterMap(uniquePayments, func(payment helloasso.Payment, _ int) (MemberPaymentPair, bool) {
@@ -120,44 +120,7 @@ func main() {
 
 	// Use lo.ForEach to update members with payment needed
 	lo.ForEach(membersToUpdatePaymentNeeded, func(pair MemberPaymentPair, _ int) {
-		// Update the member with the required fields
-		member := pair.Member
-		payment := pair.Payment
-
-		// Set the required fields
-		member.ActiveMembership = false
-		member.LastPaymentDate = payment.OrderDate
-
-		// Send email notification via Brevo API
-		emailData := brevo.EmailData{
-			SenderName:  "Boavizta",
-			SenderEmail: "noreply@boavizta.org",
-			ToEmail:     member.Email,
-			ToName:      member.FirstName + " " + member.Surname,
-			Subject:     "Your Boavizta membership has been renewed",
-			HtmlContent: "<html><body><p>Dear " + member.FirstName + ",</p><p>Thank you for renewing your Boavizta membership. Your membership is now active.</p><p>Best regards,<br>The Boavizta Team</p></body></html>",
-			TextContent: "Dear " + member.FirstName + ",\n\nThank you for renewing your Boavizta membership. Your membership is now active.\n\nBest regards,\nThe Boavizta Team",
-		}
-
-		var err error
-		if member.Email == "youen@lewebvert.fr" {
-			err = brevo.SendEmail(emailData)
-			if err != nil {
-				logger.Error("Error sending email notification", "error", err, "member", member.Email)
-			} else {
-				// mark sent
-				member.LastContributionEmailDate = time.Now()
-				member.NumberContributionsEmail++
-			}
-		} else {
-			slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
-		}
-
-		// Update the member in Baserow
-		err = baserow.UpdateMember(member)
-		if err != nil {
-			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
-		}
+		sendEmailAndUpdate(pair, logger)
 	})
 
 	logger.Info("Finished updating members with payment needed in Baserow")
@@ -170,26 +133,34 @@ func main() {
 
 	// Use lo.ForEach to update members status
 	lo.ForEach(membersToUpdateStatusUpdate, func(pair MemberPaymentPair, _ int) {
-		// Update the member with the required fields
-		member := pair.Member
-		payment := pair.Payment
-
-		// Set the required fields
-		member.ActiveMembership = true
-		member.LastPaymentDate = payment.OrderDate
-		member.NumberContributionsEmail = 0
-
-		// Update the member in Baserow
-		err = baserow.UpdateMember(member)
-		if err != nil {
-			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
-		}
+		updateValidMembers(pair, err, logger)
 	})
 
 	logger.Info("Finished updating members status in Baserow")
 
 	/// ### Stats
+	generateStats(members, paymentsByEmail, logger, uniquePayments, membersByEmail)
 
+}
+
+func updateValidMembers(pair MemberPaymentPair, err error, logger *slog.Logger) {
+	// Update the member with the required fields
+	member := pair.Member
+	payment := pair.Payment
+
+	// Set the required fields
+	member.ActiveMembership = true
+	member.LastPaymentDate = payment.OrderDate
+	member.NumberContributionsEmail = 0
+
+	// Update the member in Baserow
+	err = baserow.UpdateMember(member)
+	if err != nil {
+		logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
+	}
+}
+
+func generateStats(members []baserow.Member, paymentsByEmail map[string]helloasso.Payment, logger *slog.Logger, uniquePayments []helloasso.Payment, membersByEmail map[string]baserow.Member) {
 	// Generate membersWithoutPaymentEntry - members who don't have a payment entry
 	membersWithoutPaymentEntry := lo.Filter(members, func(member baserow.Member, _ int) bool {
 		_, exists := paymentsByEmail[member.Email]
@@ -220,5 +191,46 @@ func main() {
 	})
 
 	logger.Info("Payment entries without member", "count", len(paymentEntryWithoutMember))
+}
 
+func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
+	// Update the member with the required fields
+	member := pair.Member
+	payment := pair.Payment
+
+	// Set the required fields
+	member.ActiveMembership = false
+	member.LastPaymentDate = payment.OrderDate
+
+	// Send email notification via Brevo API
+	emailData := brevo.EmailData{
+		SenderName:  "Boavizta",
+		SenderEmail: "noreply@boavizta.org",
+		ToEmail:     member.Email,
+		ToName:      member.FirstName + " " + member.Surname,
+		Subject:     "Your Boavizta membership has been renewed",
+		HtmlContent: "<html><body><p>Dear " + member.FirstName + ",</p><p>Thank you for renewing your Boavizta membership. Your membership is now active.</p><p>Best regards,<br>The Boavizta Team</p></body></html>",
+		TextContent: "Dear " + member.FirstName + ",\n\nThank you for renewing your Boavizta membership. Your membership is now active.\n\nBest regards,\nThe Boavizta Team",
+	}
+
+	var err error
+	//TODO add filter to send no email between 2 weeks
+	if member.Email == "youen@lewebvert.fr" {
+		err = brevo.SendEmail(emailData)
+		if err != nil {
+			logger.Error("Error sending email notification", "error", err, "member", member.Email)
+		} else {
+			// mark sent
+			member.LastContributionEmailDate = time.Now()
+			member.NumberContributionsEmail++
+		}
+	} else {
+		slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
+	}
+
+	// Update the member in Baserow
+	err = baserow.UpdateMember(member)
+	if err != nil {
+		logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
+	}
 }
