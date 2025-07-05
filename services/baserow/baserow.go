@@ -22,6 +22,7 @@ type Member struct {
 	LastContributionEmailDate time.Time `json:"Last Contribution Email Date"`
 	NumberContributionsEmail  int       `json:"Number of Contributions Email"`
 	MembershipType            int       `json:"Membership Type"`
+	PreferredLanguages        []int     `json:"Preferred languages"`
 }
 
 // BaserowResponse represents the API response from Baserow
@@ -91,6 +92,7 @@ func GetMembers() ([]Member, error) {
 				ActiveMembership:         getBoolValue(result, "Active MemberShip"),
 				NumberContributionsEmail: getIntValue(result, "Number of Contributions Email"),
 				MembershipType:           getSelectId(result, "Membership type"),
+				PreferredLanguages:       getMultiSelectIds(result, "Preferred languages"),
 			}
 
 			// Handle the date fields separately as they require parsing
@@ -152,6 +154,20 @@ func getIntValue(data map[string]interface{}, key string) int {
 		return int(val)
 	}
 	return 0
+}
+
+func getMultiSelectIds(data map[string]interface{}, key string) []int {
+	var ids []int
+	if val, ok := data[key].([]interface{}); ok {
+		for _, item := range val {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if id, ok := itemMap["id"].(float64); ok {
+					ids = append(ids, int(id))
+				}
+			}
+		}
+	}
+	return ids
 }
 
 // UpdateMember updates a member's information in the Baserow database

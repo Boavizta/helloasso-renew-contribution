@@ -6,12 +6,17 @@ import (
 	"time"
 
 	"github.com/boavizta/helloasso-renew-contribution/services/baserow"
+	"github.com/boavizta/helloasso-renew-contribution/services/brevo"
 	"github.com/boavizta/helloasso-renew-contribution/services/helloasso"
 	"github.com/samber/lo"
 )
 
 const IndividualTypeId = 2521
 const OrganizationTypeId = 2520
+
+const EnglishId = 2590
+const FrenchId = 2591
+const SpanishId = 2592
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -123,8 +128,33 @@ func main() {
 		member.ActiveMembership = false
 		member.LastPaymentDate = payment.OrderDate
 
+		// Send email notification via Brevo API
+		emailData := brevo.EmailData{
+			SenderName:  "Boavizta",
+			SenderEmail: "noreply@boavizta.org",
+			ToEmail:     member.Email,
+			ToName:      member.FirstName + " " + member.Surname,
+			Subject:     "Your Boavizta membership has been renewed",
+			HtmlContent: "<html><body><p>Dear " + member.FirstName + ",</p><p>Thank you for renewing your Boavizta membership. Your membership is now active.</p><p>Best regards,<br>The Boavizta Team</p></body></html>",
+			TextContent: "Dear " + member.FirstName + ",\n\nThank you for renewing your Boavizta membership. Your membership is now active.\n\nBest regards,\nThe Boavizta Team",
+		}
+
+		var err error
+		if member.Email == "youen@lewebvert.fr" {
+			err = brevo.SendEmail(emailData)
+			if err != nil {
+				logger.Error("Error sending email notification", "error", err, "member", member.Email)
+			} else {
+				// mark sent
+				member.LastContributionEmailDate = time.Now()
+				member.NumberContributionsEmail++
+			}
+		} else {
+			slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
+		}
+
 		// Update the member in Baserow
-		err := baserow.UpdateMember(member)
+		err = baserow.UpdateMember(member)
 		if err != nil {
 			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
 		}
@@ -132,7 +162,7 @@ func main() {
 
 	logger.Info("Finished updating members with payment needed in Baserow")
 
-	//TODO 2. update marked member valid payment date + upate payment date
+	// update marked member valid payment date + upate payment date
 	logger.Info("Members status to update", "count", len(membersToUpdateStatusUpdate))
 
 	// Update all Members status with specific fields
@@ -150,17 +180,13 @@ func main() {
 		member.NumberContributionsEmail = 0
 
 		// Update the member in Baserow
-		err := baserow.UpdateMember(member)
+		err = baserow.UpdateMember(member)
 		if err != nil {
 			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
 		}
 	})
 
 	logger.Info("Finished updating members status in Baserow")
-
-	//TODO 3. mark member with need renew and last payment date and identify for emailing
-	//TODO 4. Email with brevo
-	//TODO 5. mark member email sent
 
 	/// ### Stats
 
