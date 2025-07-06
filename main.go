@@ -208,29 +208,31 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		SenderEmail: "noreply@boavizta.org",
 		ToEmail:     member.Email,
 		ToName:      member.FirstName + " " + member.Surname,
-		Subject:     "Your Boavizta membership has been renewed",
+		Subject:     "It's time to renew your Boavizta membership",
 		HtmlContent: "<html><body><p>Dear " + member.FirstName + ",</p><p>Thank you for renewing your Boavizta membership. Your membership is now active.</p><p>Best regards,<br>The Boavizta Team</p></body></html>",
 		TextContent: "Dear " + member.FirstName + ",\n\nThank you for renewing your Boavizta membership. Your membership is now active.\n\nBest regards,\nThe Boavizta Team",
 	}
 
 	var err error
-	//TODO add filter to send no email between 2 weeks
-	if member.Email == "youen@lewebvert.fr" {
-		err = brevo.SendEmail(emailData)
-		if err != nil {
-			logger.Error("Error sending email notification", "error", err, "member", member.Email)
+	// Filter to send no email between 2 weeks
+	if member.LastContributionEmailDate.Before(time.Now().AddDate(0, 0, -14)) {
+		if member.Email == "youen@lewebvert.fr" {
+			err = brevo.SendEmail(emailData)
+			if err != nil {
+				logger.Error("Error sending email notification", "error", err, "member", member.Email)
+			} else {
+				// mark sent
+				member.LastContributionEmailDate = time.Now()
+				member.NumberContributionsEmail++
+			}
 		} else {
-			// mark sent
-			member.LastContributionEmailDate = time.Now()
-			member.NumberContributionsEmail++
+			slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
 		}
-	} else {
-		slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
-	}
 
-	// Update the member in Baserow
-	err = baserow.UpdateMember(member)
-	if err != nil {
-		logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
+		// Update the member in Baserow
+		err = baserow.UpdateMember(member)
+		if err != nil {
+			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
+		}
 	}
 }
