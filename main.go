@@ -202,15 +202,68 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 	member.ActiveMembership = false
 	member.LastPaymentDate = payment.OrderDate
 
+	// Determine language preference
+	isFrench := false
+	for _, langId := range member.PreferredLanguages {
+		if langId == FrenchId {
+			isFrench = true
+			break
+		}
+	}
+
+	// Set the appropriate contribution link based on language
+	contributionLink := "https://www.helloasso.com/associations/boavizta/adhesions/annual-membership-fee"
+	if isFrench {
+		contributionLink = "https://www.helloasso.com/associations/boavizta/adhesions/cotisation-annuelle"
+	}
+
+	var subject, htmlContent, textContent string
+
+	if isFrench {
+		// French version
+		subject = "Il est temps de renouveler votre adhésion à Boavizta"
+		htmlContent = "<html><body>" +
+			"<p>Cher(e) " + member.FirstName + ",</p>" +
+			"<p>Nous espérons que vous allez bien.</p>" +
+			"<p>Votre adhésion à l'association Boavizta arrive à échéance. Nous vous invitons à la renouveler pour continuer à soutenir nos actions en faveur de la mesure et la réduction de l'impact environnemental du numérique.</p>" +
+			"<p>Pour renouveler votre adhésion, veuillez cliquer sur le lien suivant : <a href=\"" + contributionLink + "\">" + contributionLink + "</a></p>" +
+			"<p>Nous vous remercions pour votre soutien continu.</p>" +
+			"<p>Cordialement,<br>L'équipe Boavizta</p>" +
+			"</body></html>"
+		textContent = "Cher(e) " + member.FirstName + ",\n\n" +
+			"Nous espérons que vous allez bien.\n\n" +
+			"Votre adhésion à l'association Boavizta arrive à échéance. Nous vous invitons à la renouveler pour continuer à soutenir nos actions en faveur de la mesure et la réduction de l'impact environnemental du numérique.\n\n" +
+			"Pour renouveler votre adhésion, veuillez cliquer sur le lien suivant : " + contributionLink + "\n\n" +
+			"Nous vous remercions pour votre soutien continu.\n\n" +
+			"Cordialement,\nL'équipe Boavizta"
+	} else {
+		// English version
+		subject = "It's time to renew your Boavizta membership"
+		htmlContent = "<html><body>" +
+			"<p>Dear " + member.FirstName + ",</p>" +
+			"<p>We hope this message finds you well.</p>" +
+			"<p>Your membership with Boavizta association is coming to an end. We invite you to renew it to continue supporting our efforts in measuring and reducing the environmental impact of digital technology.</p>" +
+			"<p>To renew your membership, please click on the following link: <a href=\"" + contributionLink + "\">" + contributionLink + "</a></p>" +
+			"<p>Thank you for your continued support.</p>" +
+			"<p>Best regards,<br>The Boavizta Team</p>" +
+			"</body></html>"
+		textContent = "Dear " + member.FirstName + ",\n\n" +
+			"We hope this message finds you well.\n\n" +
+			"Your membership with Boavizta association is coming to an end. We invite you to renew it to continue supporting our efforts in measuring and reducing the environmental impact of digital technology.\n\n" +
+			"To renew your membership, please click on the following link: " + contributionLink + "\n\n" +
+			"Thank you for your continued support.\n\n" +
+			"Best regards,\nThe Boavizta Team"
+	}
+
 	// Send email notification via Brevo API
 	emailData := brevo.EmailData{
 		SenderName:  "Boavizta",
 		SenderEmail: "noreply@boavizta.org",
 		ToEmail:     member.Email,
 		ToName:      member.FirstName + " " + member.Surname,
-		Subject:     "It's time to renew your Boavizta membership",
-		HtmlContent: "<html><body><p>Dear " + member.FirstName + ",</p><p>Thank you for renewing your Boavizta membership. Your membership is now active.</p><p>Best regards,<br>The Boavizta Team</p></body></html>",
-		TextContent: "Dear " + member.FirstName + ",\n\nThank you for renewing your Boavizta membership. Your membership is now active.\n\nBest regards,\nThe Boavizta Team",
+		Subject:     subject,
+		HtmlContent: htmlContent,
+		TextContent: textContent,
 	}
 
 	var err error
