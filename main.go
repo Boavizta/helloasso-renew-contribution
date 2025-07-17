@@ -3,13 +3,36 @@ package main
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/boavizta/helloasso-renew-contribution/services/baserow"
 	"github.com/boavizta/helloasso-renew-contribution/services/brevo"
 	"github.com/boavizta/helloasso-renew-contribution/services/helloasso"
 	"github.com/samber/lo"
 )
+
+// toCamelCase converts a string to camel case format
+func toCamelCase(s string) string {
+	if s == "" {
+		return s
+	}
+
+	words := strings.Fields(s)
+	for i, word := range words {
+		if len(word) > 0 {
+			runes := []rune(word)
+			runes[0] = unicode.ToUpper(runes[0])
+			for j := 1; j < len(runes); j++ {
+				runes[j] = unicode.ToLower(runes[j])
+			}
+			words[i] = string(runes)
+		}
+	}
+
+	return strings.Join(words, " ")
+}
 
 const IndividualTypeId = 2521
 const OrganizationTypeId = 2520
@@ -79,10 +102,22 @@ func main() {
 
 	// Prepare Data
 
-	// Create a map of members by email for easier lookup using lo.KeyBy
-	membersByEmail := lo.KeyBy(members, func(member baserow.Member) string {
-		return member.Email
-	})
+	// Create a map of members by email for easier lookup using lo
+	// Include primary email and alternative emails if they exist
+	membersByEmail := lo.Reduce(members, func(acc map[string]baserow.Member, member baserow.Member, _ int) map[string]baserow.Member {
+		// Add primary email
+		acc[member.Email] = member
+
+		// Add alternative emails if they exist
+		if member.AlternativeEmail1 != "" {
+			acc[member.AlternativeEmail1] = member
+		}
+		if member.AlternativeEmail2 != "" {
+			acc[member.AlternativeEmail2] = member
+		}
+
+		return acc
+	}, map[string]baserow.Member{})
 
 	// Create a map of payments by email for easier lookup using lo.KeyBy
 	paymentsByEmail := lo.KeyBy(uniquePayments, func(payment helloasso.Payment) string {
@@ -210,6 +245,9 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 			break
 		}
 	}
+	if !isFrench && member.Country == "France" {
+		isFrench = true
+	}
 
 	// Set the appropriate contribution link based on language
 	contributionLink := "https://www.helloasso.com/associations/boavizta/adhesions/annual-membership-fee"
@@ -223,14 +261,14 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		// French version
 		subject = "Il est temps de renouveler votre adhésion à Boavizta"
 		htmlContent = "<html><body>" +
-			"<p>Cher(e) " + member.FirstName + ",</p>" +
+			"<p>Cher(e) " + toCamelCase(member.FirstName) + ",</p>" +
 			"<p>Nous espérons que vous allez bien.</p>" +
 			"<p>Votre adhésion à l'association Boavizta arrive à échéance. Nous vous invitons à la renouveler pour continuer à soutenir nos actions en faveur de la mesure et la réduction de l'impact environnemental du numérique.</p>" +
 			"<p>Pour renouveler votre adhésion, veuillez cliquer sur le lien suivant : <a href=\"" + contributionLink + "\">" + contributionLink + "</a></p>" +
 			"<p>Nous vous remercions pour votre soutien continu.</p>" +
 			"<p>Cordialement,<br>L'équipe Boavizta</p>" +
 			"</body></html>"
-		textContent = "Cher(e) " + member.FirstName + ",\n\n" +
+		textContent = "Cher(e) " + toCamelCase(member.FirstName) + ",\n\n" +
 			"Nous espérons que vous allez bien.\n\n" +
 			"Votre adhésion à l'association Boavizta arrive à échéance. Nous vous invitons à la renouveler pour continuer à soutenir nos actions en faveur de la mesure et la réduction de l'impact environnemental du numérique.\n\n" +
 			"Pour renouveler votre adhésion, veuillez cliquer sur le lien suivant : " + contributionLink + "\n\n" +
@@ -240,14 +278,14 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		// English version
 		subject = "It's time to renew your Boavizta membership"
 		htmlContent = "<html><body>" +
-			"<p>Dear " + member.FirstName + ",</p>" +
+			"<p>Dear " + toCamelCase(member.FirstName) + ",</p>" +
 			"<p>We hope this message finds you well.</p>" +
 			"<p>Your membership with Boavizta association is coming to an end. We invite you to renew it to continue supporting our efforts in measuring and reducing the environmental impact of digital technology.</p>" +
 			"<p>To renew your membership, please click on the following link: <a href=\"" + contributionLink + "\">" + contributionLink + "</a></p>" +
 			"<p>Thank you for your continued support.</p>" +
 			"<p>Best regards,<br>The Boavizta Team</p>" +
 			"</body></html>"
-		textContent = "Dear " + member.FirstName + ",\n\n" +
+		textContent = "Dear " + toCamelCase(member.FirstName) + ",\n\n" +
 			"We hope this message finds you well.\n\n" +
 			"Your membership with Boavizta association is coming to an end. We invite you to renew it to continue supporting our efforts in measuring and reducing the environmental impact of digital technology.\n\n" +
 			"To renew your membership, please click on the following link: " + contributionLink + "\n\n" +
@@ -258,18 +296,19 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 	// Send email notification via Brevo API
 	emailData := brevo.EmailData{
 		SenderName:  "Boavizta",
-		SenderEmail: "noreply@boavizta.org",
+		SenderEmail: "no-reply@boavizta.org",
 		ToEmail:     member.Email,
-		ToName:      member.FirstName + " " + member.Surname,
+		ToName:      toCamelCase(member.FirstName) + " " + member.Surname,
 		Subject:     subject,
 		HtmlContent: htmlContent,
 		TextContent: textContent,
 	}
 
 	var err error
+
 	// Filter to send no email between 2 weeks
 	if member.LastContributionEmailDate.Before(time.Now().AddDate(0, 0, -14)) {
-		if member.Email == "youen@lewebvert.fr" {
+		if member.Email == "youen@boavizta.org" || member.AlternativeEmail1 == "youen@boavizta.org" || member.AlternativeEmail2 == "tresorier@boavizta.org" {
 			err = brevo.SendEmail(emailData)
 			if err != nil {
 				logger.Error("Error sending email notification", "error", err, "member", member.Email)

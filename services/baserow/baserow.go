@@ -17,12 +17,15 @@ type Member struct {
 	Surname                   string    `json:"Surname"`
 	FirstName                 string    `json:"First name"`
 	Email                     string    `json:"E-mail"`
+	AlternativeEmail1         string    `json:"AlternativeEmail1"`
+	AlternativeEmail2         string    `json:"AlternativeEmail2"`
 	ActiveMembership          bool      `json:"Active MemberShip"`
 	LastPaymentDate           time.Time `json:"Last Payment Date"`
 	LastContributionEmailDate time.Time `json:"Last Contribution Email Date"`
 	NumberContributionsEmail  int       `json:"Number of Contributions Email"`
 	MembershipType            int       `json:"Membership Type"`
 	PreferredLanguages        []int     `json:"Preferred languages"`
+	Country                   string    `json:"Country"`
 }
 
 // BaserowResponse represents the API response from Baserow
@@ -89,6 +92,9 @@ func GetMembers() ([]Member, error) {
 				Surname:                  getStringValue(result, "Surname"),
 				FirstName:                getStringValue(result, "First name"),
 				Email:                    getStringValue(result, "E-mail"),
+				AlternativeEmail1:        getStringValue(result, "AlternativeEmail1"),
+				AlternativeEmail2:        getStringValue(result, "AlternativeEmail2"),
+				Country:                  getLinkedValue(result, "Country"),
 				ActiveMembership:         getBoolValue(result, "Active MemberShip"),
 				NumberContributionsEmail: getIntValue(result, "Number of Contributions Email"),
 				MembershipType:           getSelectId(result, "Membership type"),
@@ -130,6 +136,32 @@ func getStringValue(data map[string]interface{}, key string) string {
 	if val, ok := data[key].(string); ok {
 		return val
 	}
+	return ""
+}
+
+func getLinkedValue(data map[string]interface{}, key string) string {
+	// Handle string value
+	if val, ok := data[key].(string); ok {
+		return val
+	}
+
+	// Handle map value (single linked item)
+	if val, ok := data[key].(map[string]interface{}); ok {
+		if value, ok := val["value"].(string); ok {
+			return value
+		}
+	}
+
+	// Handle array value (multiple linked items)
+	if val, ok := data[key].([]interface{}); ok && len(val) > 0 {
+		// Return the first item's value
+		if itemMap, ok := val[0].(map[string]interface{}); ok {
+			if value, ok := itemMap["value"].(string); ok {
+				return value
+			}
+		}
+	}
+
 	return ""
 }
 
