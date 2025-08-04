@@ -45,3 +45,7 @@ And reuse :
 
 `go run .`
 
+
+### Build binaries
+
+`make build-all`
