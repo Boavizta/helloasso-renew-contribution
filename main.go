@@ -259,38 +259,42 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 
 	if isFrench {
 		// French version
-		subject = "Il est temps de renouveler votre adhésion à Boavizta"
+		subject = "Prêt pour une nouvelle année avec Boavizta ? Il est temps de renouveler votre adhésion"
 		htmlContent = "<html><body>" +
 			"<p>Cher(e) " + toCamelCase(member.FirstName) + ",</p>" +
-			"<p>Nous espérons que vous allez bien.</p>" +
-			"<p>Votre adhésion à l'association Boavizta arrive à échéance. Nous vous invitons à la renouveler pour continuer à soutenir nos actions en faveur de la mesure et la réduction de l'impact environnemental du numérique.</p>" +
-			"<p>Pour renouveler votre adhésion, veuillez cliquer sur le lien suivant : <a href=\"" + contributionLink + "\">" + contributionLink + "</a></p>" +
-			"<p>Nous vous remercions pour votre soutien continu.</p>" +
+			"<p>Alors que votre adhésion à Boavizta touche à sa fin, nous tenons à vous remercier d'avoir été avec nous cette année !</p>" +
+			"<p>Boavizta existe grâce aux incroyables contributions de ses membres, des personnes comme vous qui nous aident à créer et partager des communs pour promouvoir des pratiques numériques respectueuses des limites planétaires. Votre implication fait vraiment la différence.</p>" +
+			"<p>Nous sommes enthousiastes à l'idée de ce qui nous attend en 2025-2026 et nous serons heureux de vous voir rester impliqué(e) dans notre communauté.</p>" +
+			"<p>👉 Pour renouveler votre adhésion, <a href=\"" + contributionLink + "\">cliquez simplement ici</a>.</p>" +
+			"<p>Merci encore de faire partie de Boavizta !</p>" +
 			"<p>Cordialement,<br>L'équipe Boavizta</p>" +
 			"</body></html>"
 		textContent = "Cher(e) " + toCamelCase(member.FirstName) + ",\n\n" +
-			"Nous espérons que vous allez bien.\n\n" +
-			"Votre adhésion à l'association Boavizta arrive à échéance. Nous vous invitons à la renouveler pour continuer à soutenir nos actions en faveur de la mesure et la réduction de l'impact environnemental du numérique.\n\n" +
-			"Pour renouveler votre adhésion, veuillez cliquer sur le lien suivant : " + contributionLink + "\n\n" +
-			"Nous vous remercions pour votre soutien continu.\n\n" +
+			"Alors que votre adhésion à Boavizta touche à sa fin, nous tenons à vous remercier d'avoir été avec nous cette année !\n\n" +
+			"Boavizta existe grâce aux incroyables contributions de ses membres, des personnes comme vous qui nous aident à créer et partager des communs pour promouvoir des pratiques numériques respectueuses des limites planétaires. Votre implication fait vraiment la différence.\n\n" +
+			"Nous sommes enthousiastes à l'idée de ce qui nous attend en 2025-2026 et nous serons heureux de vous voir rester impliqué(e) dans notre communauté.\n\n" +
+			"👉 Pour renouveler votre adhésion, cliquez simplement ici : " + contributionLink + "\n\n" +
+			"Merci encore de faire partie de Boavizta !\n\n" +
 			"Cordialement,\nL'équipe Boavizta"
 	} else {
 		// English version
-		subject = "It's time to renew your Boavizta membership"
+		subject = "Ready for another year with Boavizta? It's time to renew your membership"
 		htmlContent = "<html><body>" +
 			"<p>Dear " + toCamelCase(member.FirstName) + ",</p>" +
-			"<p>We hope this message finds you well.</p>" +
-			"<p>Your membership with Boavizta association is coming to an end. We invite you to renew it to continue supporting our efforts in measuring and reducing the environmental impact of digital technology.</p>" +
-			"<p>To renew your membership, please click on the following link: <a href=\"" + contributionLink + "\">" + contributionLink + "</a></p>" +
-			"<p>Thank you for your continued support.</p>" +
-			"<p>Best regards,<br>The Boavizta Team</p>" +
+			"<p>As your membership with Boavizta comes to an end, we want to say thank you for being with us this past year!</p>" +
+			"<p>Boavizta exists thanks to the incredible contributions of its members, people like you who help us create and share commons to promote digital practices that respect planetary boundaries. Your involvement really makes a difference.</p>" +
+			"<p>We're excited about what's coming in 2025–2026 and we will be happy to see you stay involved in our community.</p>" +
+			"<p>👉 To renew your membership, simply <a href=\"" + contributionLink + "\">click here</a>.</p>" +
+			"<p>Thanks again for being part of Boavizta!</p>" +
+			"<p>Warm regards,<br>Boavizta Team</p>" +
 			"</body></html>"
 		textContent = "Dear " + toCamelCase(member.FirstName) + ",\n\n" +
-			"We hope this message finds you well.\n\n" +
-			"Your membership with Boavizta association is coming to an end. We invite you to renew it to continue supporting our efforts in measuring and reducing the environmental impact of digital technology.\n\n" +
-			"To renew your membership, please click on the following link: " + contributionLink + "\n\n" +
-			"Thank you for your continued support.\n\n" +
-			"Best regards,\nThe Boavizta Team"
+			"As your membership with Boavizta comes to an end, we want to say thank you for being with us this past year!\n\n" +
+			"Boavizta exists thanks to the incredible contributions of its members, people like you who help us create and share commons to promote digital practices that respect planetary boundaries. Your involvement really makes a difference.\n\n" +
+			"We're excited about what's coming in 2025–2026 and we will be happy to see you stay involved in our community.\n\n" +
+			"👉 To renew your membership, simply click here: " + contributionLink + "\n\n" +
+			"Thanks again for being part of Boavizta!\n\n" +
+			"Warm regards,\nBoavizta Team"
 	}
 
 	// Send email notification via Brevo API
@@ -308,18 +312,18 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 
 	// Filter to send no email between 2 weeks
 	if member.LastContributionEmailDate.Before(time.Now().AddDate(0, 0, -14)) {
-		if member.Email == "youen@boavizta.org" || member.AlternativeEmail1 == "youen@boavizta.org" || member.AlternativeEmail2 == "tresorier@boavizta.org" {
-			err = brevo.SendEmail(emailData)
-			if err != nil {
-				logger.Error("Error sending email notification", "error", err, "member", member.Email)
-			} else {
-				// mark sent
-				member.LastContributionEmailDate = time.Now()
-				member.NumberContributionsEmail++
-			}
+		//if member.Email == "youen@boavizta.org" || member.AlternativeEmail1 == "youen@boavizta.org" || member.AlternativeEmail2 == "tresorier@boavizta.org" {
+		err = brevo.SendEmail(emailData)
+		if err != nil {
+			logger.Error("Error sending email notification", "error", err, "member", member.Email)
 		} else {
-			slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
+			// mark sent
+			member.LastContributionEmailDate = time.Now()
+			member.NumberContributionsEmail++
 		}
+		//} else {
+		//	slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
+		//}
 
 		// Update the member in Baserow
 		err = baserow.UpdateMember(member)
