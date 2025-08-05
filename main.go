@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -204,9 +205,14 @@ func generateStats(members []baserow.Member, paymentsByEmail map[string]helloass
 
 	logger.Info("Members without payment entry", "count", len(membersWithoutPaymentEntry))
 
+	// List all members without payment entry
+	logger.Info("Listing all members without payment entry:")
+	for _, member := range membersWithoutPaymentEntry {
+		fmt.Printf("%s,%s\n", member.Email, member.FirstName+" "+member.Surname)
+	}
+
 	// Generate membersWithoutPaymentEntryIndividual - individual members without payment entry
 	membersWithoutPaymentEntryIndividual := lo.Filter(membersWithoutPaymentEntry, func(member baserow.Member, _ int) bool {
-
 		return member.MembershipType == IndividualTypeId
 	})
 
@@ -226,6 +232,12 @@ func generateStats(members []baserow.Member, paymentsByEmail map[string]helloass
 	})
 
 	logger.Info("Payment entries without member", "count", len(paymentEntryWithoutMember))
+
+	// List all payment entries without member
+	logger.Info("Listing all payment entries without member:")
+	for _, payment := range paymentEntryWithoutMember {
+		fmt.Printf("%s,%s\n", payment.PayerEmail, payment.PayerFirstName+" "+payment.PayerLastName)
+	}
 }
 
 func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
