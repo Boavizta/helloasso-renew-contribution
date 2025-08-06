@@ -238,6 +238,19 @@ func generateStats(members []baserow.Member, paymentsByEmail map[string]helloass
 	for _, payment := range paymentEntryWithoutMember {
 		fmt.Printf("%s,%s\n", payment.PayerEmail, payment.PayerFirstName+" "+payment.PayerLastName)
 	}
+
+	// Get all payments of organization with amount 100
+	organizationPayments100 := lo.Filter(uniquePayments, func(payment helloasso.Payment, _ int) bool {
+		return payment.Amount == 100
+	})
+
+	logger.Info("Organization payments with amount 100", "count", len(organizationPayments100))
+
+	// List all organization payments with amount 100
+	logger.Info("Listing all organization payments with amount 100:")
+	for _, payment := range organizationPayments100 {
+		fmt.Printf("%s,%s,%s\n", payment.PayerEmail, payment.PayerFirstName+" "+payment.PayerLastName, payment.OrderDate.Format("2006-01-02"))
+	}
 }
 
 func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {

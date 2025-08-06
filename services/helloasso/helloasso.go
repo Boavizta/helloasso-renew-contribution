@@ -26,6 +26,7 @@ type Payment struct {
 	PayerEmail     string    `json:"payerEmail"`
 	PayerFirstName string    `json:"payerFirstName"`
 	PayerLastName  string    `json:"payerLastName"`
+	Amount         float64   `json:"payerAmount"`
 }
 
 // PaymentResponse represents the API response for payments
@@ -169,12 +170,14 @@ func GetPayments() ([]Payment, error) {
 		slog.Info("Processing payments from page", "page", pageIndex, "count", pagePayments)
 
 		for _, item := range paymentResp.Data {
+
 			payment := Payment{
 				OrderFormSlug:  item.Order.FormSlug,
 				OrderDate:      item.Order.Date,
 				PayerEmail:     item.Payer.Email,
 				PayerFirstName: item.Payer.FirstName,
 				PayerLastName:  item.Payer.LastName,
+				Amount:         float64(item.Amount) / 100,
 			}
 			allPayments = append(allPayments, payment)
 		}
