@@ -8,6 +8,12 @@ Hello Asso renew contribution management script which do :
 - Compare and update with association member in baserow.
 - Email needed people for contribution renew.
 
+## TODO
+
+ - [ ] spo 1000 € cotisation
+ - [ ] check limit of contribution email
+ - [ ] without contribution ( Personne Physique - Sans Cotisation  and  Personne Morale - Cotisation déjà effectuée)
+
 ## Configuration
 
 Following env var are required :

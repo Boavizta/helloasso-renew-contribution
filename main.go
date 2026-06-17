@@ -289,7 +289,7 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 			"<p>Cher(e) " + toCamelCase(member.FirstName) + ",</p>" +
 			"<p>Alors que votre adhésion à Boavizta touche à sa fin, nous tenons à vous remercier d'avoir été avec nous cette année !</p>" +
 			"<p>Boavizta existe grâce aux incroyables contributions de ses membres, des personnes comme vous qui nous aident à créer et partager des communs pour promouvoir des pratiques numériques respectueuses des limites planétaires. Votre implication fait vraiment la différence.</p>" +
-			"<p>Nous sommes enthousiastes à l'idée de ce qui nous attend en 2025-2026 et nous serons heureux de vous voir rester impliqué(e) dans notre communauté.</p>" +
+			"<p>Nous sommes enthousiastes à l'idée de ce qui nous attend en 2026 et nous serons heureux de vous voir rester impliqué(e) dans notre communauté.</p>" +
 			"<p>👉 Pour renouveler votre adhésion, <a href=\"" + contributionLink + "\">cliquez simplement ici</a>.</p>" +
 			"<p>Merci encore de faire partie de Boavizta !</p>" +
 			"<p>Cordialement,<br>L'équipe Boavizta</p>" +
@@ -297,7 +297,7 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		textContent = "Cher(e) " + toCamelCase(member.FirstName) + ",\n\n" +
 			"Alors que votre adhésion à Boavizta touche à sa fin, nous tenons à vous remercier d'avoir été avec nous cette année !\n\n" +
 			"Boavizta existe grâce aux incroyables contributions de ses membres, des personnes comme vous qui nous aident à créer et partager des communs pour promouvoir des pratiques numériques respectueuses des limites planétaires. Votre implication fait vraiment la différence.\n\n" +
-			"Nous sommes enthousiastes à l'idée de ce qui nous attend en 2025-2026 et nous serons heureux de vous voir rester impliqué(e) dans notre communauté.\n\n" +
+			"Nous sommes enthousiastes à l'idée de ce qui nous attend en 2026 et nous serons heureux de vous voir rester impliqué(e) dans notre communauté.\n\n" +
 			"👉 Pour renouveler votre adhésion, cliquez simplement ici : " + contributionLink + "\n\n" +
 			"Merci encore de faire partie de Boavizta !\n\n" +
 			"Cordialement,\nL'équipe Boavizta"
@@ -308,7 +308,7 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 			"<p>Dear " + toCamelCase(member.FirstName) + ",</p>" +
 			"<p>As your membership with Boavizta comes to an end, we want to say thank you for being with us this past year!</p>" +
 			"<p>Boavizta exists thanks to the incredible contributions of its members, people like you who help us create and share commons to promote digital practices that respect planetary boundaries. Your involvement really makes a difference.</p>" +
-			"<p>We're excited about what's coming in 2025–2026 and we will be happy to see you stay involved in our community.</p>" +
+			"<p>We're excited about what's coming in 026 and we will be happy to see you stay involved in our community.</p>" +
 			"<p>👉 To renew your membership, simply <a href=\"" + contributionLink + "\">click here</a>.</p>" +
 			"<p>Thanks again for being part of Boavizta!</p>" +
 			"<p>Warm regards,<br>Boavizta Team</p>" +
@@ -316,7 +316,7 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		textContent = "Dear " + toCamelCase(member.FirstName) + ",\n\n" +
 			"As your membership with Boavizta comes to an end, we want to say thank you for being with us this past year!\n\n" +
 			"Boavizta exists thanks to the incredible contributions of its members, people like you who help us create and share commons to promote digital practices that respect planetary boundaries. Your involvement really makes a difference.\n\n" +
-			"We're excited about what's coming in 2025–2026 and we will be happy to see you stay involved in our community.\n\n" +
+			"We're excited about what's coming in 2026 and we will be happy to see you stay involved in our community.\n\n" +
 			"👉 To renew your membership, simply click here: " + contributionLink + "\n\n" +
 			"Thanks again for being part of Boavizta!\n\n" +
 			"Warm regards,\nBoavizta Team"
