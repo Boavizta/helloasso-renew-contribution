@@ -297,16 +297,17 @@ func main() {
 		}, true
 	})
 
-	oneYearAgo := time.Now().AddDate(-1, 0, 0)
+	twelveMonthsAgo := time.Now().AddDate(0, -12, 0)
+	thirteenMonthsAgo := time.Now().AddDate(0, -13, 0)
 
-	// Members with payments older than 1 year → send renewal email
+	// Members with payments older than 12 months → send renewal email
 	membersToUpdatePaymentNeeded := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
-		return pair.Payment.OrderDate.Before(oneYearAgo)
+		return pair.Payment.OrderDate.Before(twelveMonthsAgo)
 	})
 
-	// Members with recent payments that need status update
+	// Members with recent payments (≤12 months) that need status update
 	membersToUpdateStatusUpdate := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
-		return !pair.Payment.OrderDate.Before(oneYearAgo) &&
+		return !pair.Payment.OrderDate.Before(twelveMonthsAgo) &&
 			(pair.Member.ActiveMembership == false || pair.Member.LastPaymentDate.Format("2006-01-02") != pair.Payment.OrderDate.Format("2006-01-02"))
 	})
 
@@ -327,7 +328,7 @@ func main() {
 
 	logger.Info("Finished updating members status in Baserow")
 
-	// --- Deactivate members with no recent payment (within 12 months) ---
+	// --- Deactivate members with no recent payment (within 13 months) ---
 
 	// Collect all member IDs that were already processed in earlier steps
 	processedMemberIds := make(map[int]bool)
@@ -338,11 +339,11 @@ func main() {
 		processedMemberIds[pair.Member.Id] = true
 	}
 
-	// Build sets of recent payment indicators (within last 12 months)
+	// Build sets of recent payment indicators (within last 13 months)
 	recentPaymentEmails := make(map[string]bool)
 	recentPaymentDomains := make(map[string]bool)
 	for _, payment := range uniquePayments {
-		if payment.OrderDate.Before(oneYearAgo) {
+		if payment.OrderDate.Before(thirteenMonthsAgo) {
 			continue
 		}
 		recentPaymentEmails[payment.PayerEmail] = true
@@ -382,7 +383,7 @@ func main() {
 		return true
 	})
 
-	logger.Info("Members to deactivate (no recent payment in 12 months)", "count", len(membersToDeactivate))
+	logger.Info("Members to deactivate (no recent payment in 13 months)", "count", len(membersToDeactivate))
 
 	lo.ForEach(membersToDeactivate, func(member baserow.Member, _ int) {
 		member.ActiveMembership = false
