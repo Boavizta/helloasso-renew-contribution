@@ -327,6 +327,81 @@ func main() {
 
 	logger.Info("Finished updating members status in Baserow")
 
+	// --- Deactivate members with no recent payment (within 12 months) ---
+
+	// Collect all member IDs that were already processed in earlier steps
+	processedMemberIds := make(map[int]bool)
+	for id := range domainUpdatedIds {
+		processedMemberIds[id] = true
+	}
+	for _, pair := range membersWithPayment {
+		processedMemberIds[pair.Member.Id] = true
+	}
+
+	// Build sets of recent payment indicators (within last 12 months)
+	recentPaymentEmails := make(map[string]bool)
+	recentPaymentDomains := make(map[string]bool)
+	for _, payment := range uniquePayments {
+		if payment.OrderDate.Before(oneYearAgo) {
+			continue
+		}
+		recentPaymentEmails[payment.PayerEmail] = true
+
+		domain := extractDomain(payment.PayerEmail)
+		if domain != "" && !isCommonEmailProvider(domain) {
+			recentPaymentDomains[domain] = true
+		}
+	}
+
+	membersToDeactivate := lo.Filter(members, func(member baserow.Member, _ int) bool {
+		if processedMemberIds[member.Id] {
+			return false
+		}
+		if !member.ActiveMembership {
+			return false
+		}
+
+		// Check if member has a recent payment by email
+		if recentPaymentEmails[member.Email] ||
+			(member.AlternativeEmail1 != "" && recentPaymentEmails[member.AlternativeEmail1]) ||
+			(member.AlternativeEmail2 != "" && recentPaymentEmails[member.AlternativeEmail2]) {
+			return false
+		}
+
+		// Check if any of member's email domains have a recent payment
+		for _, email := range []string{member.Email, member.AlternativeEmail1, member.AlternativeEmail2} {
+			if email == "" {
+				continue
+			}
+			domain := extractDomain(email)
+			if domain != "" && recentPaymentDomains[domain] {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	logger.Info("Members to deactivate (no recent payment in 12 months)", "count", len(membersToDeactivate))
+
+	lo.ForEach(membersToDeactivate, func(member baserow.Member, _ int) {
+		member.ActiveMembership = false
+
+		if updateErr := baserow.UpdateMember(member); updateErr != nil {
+			logger.Error("Error deactivating member in Baserow",
+				"error", updateErr,
+				"member", member.Email,
+			)
+		} else {
+			logger.Info("Deactivated member (no recent payment)",
+				"member", member.Email,
+				"id", member.Id,
+			)
+		}
+	})
+
+	logger.Info("Finished deactivating members with no recent payment")
+
 	/// ### Stats
 	generateStats(members, paymentsByEmail, logger, uniquePayments, membersByEmail)
 }
@@ -483,21 +558,18 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		TextContent: textContent,
 	}
 
-	var err error
-
-	// Filter to send no email between 2 weeks
+	// Send renewal email only if last one was more than 14 days ago
 	if member.LastContributionEmailDate.Before(time.Now().AddDate(0, 0, -14)) {
-		err = brevo.SendEmail(emailData)
-		if err != nil {
+		if err := brevo.SendEmail(emailData); err != nil {
 			logger.Error("Error sending email notification", "error", err, "member", member.Email)
 		} else {
 			member.LastContributionEmailDate = time.Now()
 			member.NumberContributionsEmail++
 		}
+	}
 
-		err = baserow.UpdateMember(member)
-		if err != nil {
-			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
-		}
+	// Always update Baserow (deactivation + payment date), even if email was rate-limited
+	if err := baserow.UpdateMember(member); err != nil {
+		logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
 	}
 }
