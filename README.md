@@ -10,7 +10,7 @@ Hello Asso renew contribution management script which do :
 
 ## TODO
 
- - [ ] spo 1000 € cotisation
+ - [x] spo 1000 € cotisation
  - [ ] check limit of contribution email
  - [ ] without contribution ( Personne Physique - Sans Cotisation  and  Personne Morale - Cotisation déjà effectuée)
 

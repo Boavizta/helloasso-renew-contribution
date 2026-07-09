@@ -35,6 +35,99 @@ func toCamelCase(s string) string {
 	return strings.Join(words, " ")
 }
 
+// extractDomain extracts the domain part from an email address.
+// Returns empty string if the email format is invalid.
+func extractDomain(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.ToLower(parts[1])
+}
+
+// commonEmailProviders lists free/public email domains for which domain-based
+// matching must NOT be used (anyone can register, the domain says nothing about
+// organisational affiliation). Payments from these domains fall through to the
+// standard email-based matching.
+var commonEmailProviders = map[string]bool{
+	// International
+	"gmail.com":          true,
+	"hotmail.com":        true,
+	"hotmail.co.uk":      true,
+	"outlook.com":        true,
+	"outlook.fr":         true,
+	"live.com":           true,
+	"live.fr":            true,
+	"msn.com":            true,
+	"yahoo.com":          true,
+	"yahoo.fr":           true,
+	"yahoo.co.uk":        true,
+	"aol.com":            true,
+	"icloud.com":         true,
+	"me.com":             true,
+	"mac.com":            true,
+	"protonmail.com":     true,
+	"proton.me":          true,
+	"tutanota.com":       true,
+	"tuta.io":            true,
+	"gmx.com":            true,
+	"gmx.fr":             true,
+	"mail.com":           true,
+	"yandex.com":         true,
+	"zoho.com":           true,
+	"fastmail.com":       true,
+	"hushmail.com":       true,
+	"startmail.com":      true,
+	// French ISPs
+	"laposte.net":        true,
+	"orange.fr":          true,
+	"wanadoo.fr":         true,
+	"free.fr":            true,
+	"sfr.fr":             true,
+	"numericable.fr":     true,
+	"bbox.fr":            true,
+	"neuf.fr":            true,
+	// Alumni / school
+	"gadz.org":           true,
+	"m4x.org":            true,
+	// Disposable / temporary email providers
+	"mailinator.com":     true,
+	"guerrillamail.com":  true,
+	"10minutemail.com":   true,
+	"tempmail.com":       true,
+	"temp-mail.org":      true,
+	"throwawaymail.com":  true,
+	"yopmail.com":        true,
+	"getnada.com":        true,
+	"nada.email":         true,
+	"fakeinbox.com":      true,
+	"sharklasers.com":    true,
+	"trashmail.com":      true,
+	"trashmail.net":      true,
+	"mintemail.com":      true,
+	"mohmal.com":         true,
+	"tempinbox.com":      true,
+	"maildrop.cc":        true,
+	"mailnesia.com":      true,
+	"spamgourmet.com":    true,
+	"dispostable.com":    true,
+	"mailcatch.com":      true,
+	"tempmailo.com":      true,
+	"emailondeck.com":    true,
+	"mytemp.email":       true,
+	"burnermail.io":      true,
+	"isposable.com":      true,
+	"moakt.com":          true,
+	"tmpmail.org":        true,
+	"tmpmail.net":        true,
+}
+
+// isCommonEmailProvider reports whether the domain is a free/public email provider
+// for which domain-based matching is not meaningful.
+func isCommonEmailProvider(domain string) bool {
+	return commonEmailProviders[domain]
+}
+
 const IndividualTypeId = 2521
 const OrganizationTypeId = 2520
 
@@ -42,7 +135,7 @@ const EnglishId = 2590
 const FrenchId = 2591
 const SpanishId = 2592
 
-// Members to check & update - merge lastPayments with members using email
+// MemberPaymentPair merges a member with their payment for processing
 type MemberPaymentPair struct {
 	Member  baserow.Member
 	Payment helloasso.Payment
@@ -61,12 +154,6 @@ func main() {
 	}
 
 	logger.Info("Successfully fetched payments", "count", len(payments))
-
-	// Extract and print distinct Form slugs using samber/lo
-	// Uncomment if needed:
-	// slugs := lo.Map(payments, func(payment helloasso.Payment, _ int) string {
-	// 	return payment.OrderFormSlug
-	// })
 
 	// Filter payments to keep only those with form slugs "cotisation-annuelle" or "annual-membership-fee"
 	filteredPayments := lo.Filter(payments, func(payment helloasso.Payment, _ int) bool {
@@ -91,7 +178,6 @@ func main() {
 
 	logger.Info("Unique emails with most recent payment data", "count", len(uniquePayments))
 
-	// 1. compare & update with baserow - https://baserow.io/docs/apis%2Frest-api
 	// Fetch members from Baserow
 	logger.Info("Fetching members from Baserow")
 	members, err := baserow.GetMembers()
@@ -101,34 +187,108 @@ func main() {
 	}
 	logger.Info("Successfully fetched members from Baserow", "count", len(members))
 
-	// Prepare Data
-
-	// Create a map of members by email for easier lookup using lo
+	// Create a map of members by email for easier lookup
 	// Include primary email and alternative emails if they exist
 	membersByEmail := lo.Reduce(members, func(acc map[string]baserow.Member, member baserow.Member, _ int) map[string]baserow.Member {
-		// Add primary email
 		acc[member.Email] = member
-
-		// Add alternative emails if they exist
 		if member.AlternativeEmail1 != "" {
 			acc[member.AlternativeEmail1] = member
 		}
 		if member.AlternativeEmail2 != "" {
 			acc[member.AlternativeEmail2] = member
 		}
-
 		return acc
 	}, map[string]baserow.Member{})
 
-	// Create a map of payments by email for easier lookup using lo.KeyBy
+	// --- Domain-based matching: update INACTIVE members (no email) ---
+	// Group all payments by domain, keep most recent per domain
+	paymentsByDomain := lo.Values(
+		lo.MapValues(
+			lo.GroupBy(uniquePayments, func(payment helloasso.Payment) string {
+				return extractDomain(payment.PayerEmail)
+			}),
+			func(payments []helloasso.Payment, _ string) helloasso.Payment {
+				return lo.MaxBy(payments, func(p1, p2 helloasso.Payment) bool {
+					return p1.OrderDate.After(p2.OrderDate)
+				})
+			},
+		),
+	)
+
+	// Track which members were updated via domain matching to skip them in email phase
+	domainUpdatedIds := map[int]bool{}
+
+	lo.ForEach(paymentsByDomain, func(payment helloasso.Payment, _ int) {
+		domain := extractDomain(payment.PayerEmail)
+		if domain == "" {
+			return
+		}
+
+		// Skip common/free email providers — domain matching is not meaningful
+		// for them, these payments fall through to the email-based matching.
+		if isCommonEmailProvider(domain) {
+			logger.Info("Skipping domain matching for common email provider",
+				"domain", domain,
+				"payer", payment.PayerEmail,
+			)
+			return
+		}
+
+		domainMembers := lo.Filter(members, func(member baserow.Member, _ int) bool {
+			return extractDomain(member.Email) == domain ||
+				(member.AlternativeEmail1 != "" && extractDomain(member.AlternativeEmail1) == domain) ||
+				(member.AlternativeEmail2 != "" && extractDomain(member.AlternativeEmail2) == domain)
+		})
+
+		// Only update members that are NOT already active
+		inactiveMembers := lo.Filter(domainMembers, func(member baserow.Member, _ int) bool {
+			return !member.ActiveMembership
+		})
+
+		if len(inactiveMembers) == 0 {
+			return
+		}
+
+		logger.Info("Domain payment - updating inactive members",
+			"domain", domain,
+			"payer", payment.PayerEmail,
+			"amount", payment.Amount,
+			"inactive", len(inactiveMembers),
+		)
+
+		lo.ForEach(inactiveMembers, func(member baserow.Member, _ int) {
+			member.ActiveMembership = true
+			member.LastPaymentDate = payment.OrderDate
+			member.NumberContributionsEmail = 0
+
+			if updateErr := baserow.UpdateMember(member); updateErr != nil {
+				logger.Error("Error updating member in Baserow",
+					"error", updateErr,
+					"member", member.Email,
+					"domain", domain,
+				)
+			} else {
+				domainUpdatedIds[member.Id] = true
+			}
+		})
+	})
+
+	logger.Info("Finished domain-based updates", "count", len(domainUpdatedIds))
+
+	// --- Email-based matching: handle active members (old mechanism) ---
+	// Create a map of payments by email for easier lookup
 	paymentsByEmail := lo.KeyBy(uniquePayments, func(payment helloasso.Payment) string {
 		return payment.PayerEmail
 	})
 
-	// Use lo.FilterMap to create membersWithPayment
+	// Match payments to members by email, excluding domain-updated members
 	membersWithPayment := lo.FilterMap(uniquePayments, func(payment helloasso.Payment, _ int) (MemberPaymentPair, bool) {
 		member, exists := membersByEmail[payment.PayerEmail]
 		if !exists {
+			return MemberPaymentPair{}, false
+		}
+		// Skip members already updated via domain matching
+		if domainUpdatedIds[member.Id] {
 			return MemberPaymentPair{}, false
 		}
 		return MemberPaymentPair{
@@ -137,16 +297,14 @@ func main() {
 		}, true
 	})
 
-	// Filter uniquePayments to keep only those with order dates older than 1 year
 	oneYearAgo := time.Now().AddDate(-1, 0, 0)
 
-	// Filter membersWithPayment to create the two slices based on payment dates
-	// Use lo.Filter to get members with payments older than 1 year
+	// Members with payments older than 1 year → send renewal email
 	membersToUpdatePaymentNeeded := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
 		return pair.Payment.OrderDate.Before(oneYearAgo)
 	})
 
-	// Use lo.Filter to get members with recent payments that need status update
+	// Members with recent payments that need status update
 	membersToUpdateStatusUpdate := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
 		return !pair.Payment.OrderDate.Before(oneYearAgo) &&
 			(pair.Member.ActiveMembership == false || pair.Member.LastPaymentDate.Format("2006-01-02") != pair.Payment.OrderDate.Format("2006-01-02"))
@@ -154,20 +312,15 @@ func main() {
 
 	logger.Info("Members with payment needed", "count", len(membersToUpdatePaymentNeeded))
 
-	// Use lo.ForEach to update members with payment needed
 	lo.ForEach(membersToUpdatePaymentNeeded, func(pair MemberPaymentPair, _ int) {
 		sendEmailAndUpdate(pair, logger)
 	})
 
 	logger.Info("Finished updating members with payment needed in Baserow")
 
-	// update marked member valid payment date + upate payment date
 	logger.Info("Members status to update", "count", len(membersToUpdateStatusUpdate))
-
-	// Update all Members status with specific fields
 	logger.Info("Updating all members status in Baserow")
 
-	// Use lo.ForEach to update members status
 	lo.ForEach(membersToUpdateStatusUpdate, func(pair MemberPaymentPair, _ int) {
 		updateValidMembers(pair, err, logger)
 	})
@@ -176,20 +329,16 @@ func main() {
 
 	/// ### Stats
 	generateStats(members, paymentsByEmail, logger, uniquePayments, membersByEmail)
-
 }
 
 func updateValidMembers(pair MemberPaymentPair, err error, logger *slog.Logger) {
-	// Update the member with the required fields
 	member := pair.Member
 	payment := pair.Payment
 
-	// Set the required fields
 	member.ActiveMembership = true
 	member.LastPaymentDate = payment.OrderDate
 	member.NumberContributionsEmail = 0
 
-	// Update the member in Baserow
 	err = baserow.UpdateMember(member)
 	if err != nil {
 		logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
@@ -197,7 +346,7 @@ func updateValidMembers(pair MemberPaymentPair, err error, logger *slog.Logger) 
 }
 
 func generateStats(members []baserow.Member, paymentsByEmail map[string]helloasso.Payment, logger *slog.Logger, uniquePayments []helloasso.Payment, membersByEmail map[string]baserow.Member) {
-	// Generate membersWithoutPaymentEntry - members who don't have a payment entry
+	// Members without payment entry
 	membersWithoutPaymentEntry := lo.Filter(members, func(member baserow.Member, _ int) bool {
 		_, exists := paymentsByEmail[member.Email]
 		return !exists
@@ -205,27 +354,26 @@ func generateStats(members []baserow.Member, paymentsByEmail map[string]helloass
 
 	logger.Info("Members without payment entry", "count", len(membersWithoutPaymentEntry))
 
-	// List all members without payment entry
 	logger.Info("Listing all members without payment entry:")
 	for _, member := range membersWithoutPaymentEntry {
 		fmt.Printf("%s,%s\n", member.Email, member.FirstName+" "+member.Surname)
 	}
 
-	// Generate membersWithoutPaymentEntryIndividual - individual members without payment entry
+	// Individual members without payment entry
 	membersWithoutPaymentEntryIndividual := lo.Filter(membersWithoutPaymentEntry, func(member baserow.Member, _ int) bool {
 		return member.MembershipType == IndividualTypeId
 	})
 
 	logger.Info("Individual members without payment entry", "count", len(membersWithoutPaymentEntryIndividual))
 
-	// Generate membersWithoutPaymentEntryOrganization - organization members without payment entry
+	// Organization members without payment entry
 	membersWithoutPaymentEntryOrganization := lo.Filter(membersWithoutPaymentEntry, func(member baserow.Member, _ int) bool {
 		return member.MembershipType == OrganizationTypeId
 	})
 
 	logger.Info("Organization members without payment entry", "count", len(membersWithoutPaymentEntryOrganization))
 
-	// Generate paymentEntryWithoutMember - payment entries that don't have a corresponding member
+	// Payment entries without member
 	paymentEntryWithoutMember := lo.Filter(uniquePayments, func(payment helloasso.Payment, _ int) bool {
 		_, exists := membersByEmail[payment.PayerEmail]
 		return !exists
@@ -233,32 +381,38 @@ func generateStats(members []baserow.Member, paymentsByEmail map[string]helloass
 
 	logger.Info("Payment entries without member", "count", len(paymentEntryWithoutMember))
 
-	// List all payment entries without member
 	logger.Info("Listing all payment entries without member:")
 	for _, payment := range paymentEntryWithoutMember {
 		fmt.Printf("%s,%s\n", payment.PayerEmail, payment.PayerFirstName+" "+payment.PayerLastName)
 	}
 
-	// Get all payments of organization with amount 100
-	organizationPayments100 := lo.Filter(uniquePayments, func(payment helloasso.Payment, _ int) bool {
+	// SME payments (100€)
+	smePayments := lo.Filter(uniquePayments, func(payment helloasso.Payment, _ int) bool {
 		return payment.Amount == 100
 	})
 
-	logger.Info("Organization payments with amount 100", "count", len(organizationPayments100))
+	logger.Info("SME payments (100€)", "count", len(smePayments))
+	logger.Info("Listing all SME payments:")
+	for _, payment := range smePayments {
+		fmt.Printf("%s,%s,%s\n", payment.PayerEmail, payment.PayerFirstName+" "+payment.PayerLastName, payment.OrderDate.Format("2006-01-02"))
+	}
 
-	// List all organization payments with amount 100
-	logger.Info("Listing all organization payments with amount 100:")
-	for _, payment := range organizationPayments100 {
+	// Enterprise payments (1000€)
+	enterprisePayments := lo.Filter(uniquePayments, func(payment helloasso.Payment, _ int) bool {
+		return payment.Amount == 1000
+	})
+
+	logger.Info("Enterprise payments (1000€)", "count", len(enterprisePayments))
+	logger.Info("Listing all Enterprise payments:")
+	for _, payment := range enterprisePayments {
 		fmt.Printf("%s,%s,%s\n", payment.PayerEmail, payment.PayerFirstName+" "+payment.PayerLastName, payment.OrderDate.Format("2006-01-02"))
 	}
 }
 
 func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
-	// Update the member with the required fields
 	member := pair.Member
 	payment := pair.Payment
 
-	// Set the required fields
 	member.ActiveMembership = false
 	member.LastPaymentDate = payment.OrderDate
 
@@ -274,7 +428,6 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 		isFrench = true
 	}
 
-	// Set the appropriate contribution link based on language
 	contributionLink := "https://www.helloasso.com/associations/boavizta/adhesions/annual-membership-fee"
 	if isFrench {
 		contributionLink = "https://www.helloasso.com/associations/boavizta/adhesions/cotisation-annuelle"
@@ -283,7 +436,6 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 	var subject, htmlContent, textContent string
 
 	if isFrench {
-		// French version
 		subject = "Prêt pour une nouvelle année avec Boavizta ? Il est temps de renouveler votre adhésion"
 		htmlContent = "<html><body>" +
 			"<p>Cher(e) " + toCamelCase(member.FirstName) + ",</p>" +
@@ -302,13 +454,12 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 			"Merci encore de faire partie de Boavizta !\n\n" +
 			"Cordialement,\nL'équipe Boavizta"
 	} else {
-		// English version
 		subject = "Ready for another year with Boavizta? It's time to renew your membership"
 		htmlContent = "<html><body>" +
 			"<p>Dear " + toCamelCase(member.FirstName) + ",</p>" +
 			"<p>As your membership with Boavizta comes to an end, we want to say thank you for being with us this past year!</p>" +
 			"<p>Boavizta exists thanks to the incredible contributions of its members, people like you who help us create and share commons to promote digital practices that respect planetary boundaries. Your involvement really makes a difference.</p>" +
-			"<p>We're excited about what's coming in 026 and we will be happy to see you stay involved in our community.</p>" +
+			"<p>We're excited about what's coming in 2026 and we will be happy to see you stay involved in our community.</p>" +
 			"<p>👉 To renew your membership, simply <a href=\"" + contributionLink + "\">click here</a>.</p>" +
 			"<p>Thanks again for being part of Boavizta!</p>" +
 			"<p>Warm regards,<br>Boavizta Team</p>" +
@@ -322,7 +473,6 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 			"Warm regards,\nBoavizta Team"
 	}
 
-	// Send email notification via Brevo API
 	emailData := brevo.EmailData{
 		SenderName:  "Boavizta",
 		SenderEmail: "no-reply@boavizta.org",
@@ -337,20 +487,14 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 
 	// Filter to send no email between 2 weeks
 	if member.LastContributionEmailDate.Before(time.Now().AddDate(0, 0, -14)) {
-		//if member.Email == "youen@boavizta.org" || member.AlternativeEmail1 == "youen@boavizta.org" || member.AlternativeEmail2 == "tresorier@boavizta.org" {
 		err = brevo.SendEmail(emailData)
 		if err != nil {
 			logger.Error("Error sending email notification", "error", err, "member", member.Email)
 		} else {
-			// mark sent
 			member.LastContributionEmailDate = time.Now()
 			member.NumberContributionsEmail++
 		}
-		//} else {
-		//	slog.Info("Skipping email notification", "member", member.Email, "subject", emailData.Subject, "body", emailData.HtmlContent, "bodytxt", emailData.TextContent)
-		//}
 
-		// Update the member in Baserow
 		err = baserow.UpdateMember(member)
 		if err != nil {
 			logger.Error("Error updating member in Baserow", "error", err, "member", member.Email)
