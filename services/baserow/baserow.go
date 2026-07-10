@@ -11,7 +11,9 @@ import (
 	"time"
 )
 
-// Member represents a member from the Baserow table with the required columns
+// Member represents a member from the Baserow table with the required columns.
+// Id is the Baserow row ID (auto-generated, lowercase "id" in API responses),
+// used as the identifier in update/delete API calls.
 type Member struct {
 	Id                        int       `json:"Id"`
 	Surname                   string    `json:"Surname"`
@@ -88,7 +90,7 @@ func GetMembers() ([]Member, error) {
 		// Process the results from this page
 		for _, result := range baserowResp.Results {
 			member := Member{
-				Id:                       getIntValue(result, "Id"),
+				Id:                       getIntValue(result, "id"),
 				Surname:                  getStringValue(result, "Surname"),
 				FirstName:                getStringValue(result, "First name"),
 				Email:                    getStringValue(result, "E-mail"),

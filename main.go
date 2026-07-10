@@ -211,6 +211,9 @@ func main() {
 		return acc
 	}, map[string]baserow.Member{})
 
+	twelveMonthsAgo := time.Now().AddDate(0, -12, 0)
+	thirteenMonthsAgo := time.Now().AddDate(0, -13, 0)
+
 	// --- Domain-based matching: update INACTIVE members (no email) ---
 	// Group all payments by domain, keep most recent per domain
 	paymentsByDomain := lo.Values(
@@ -241,6 +244,23 @@ func main() {
 			logger.Info("Skipping domain matching for common email provider",
 				"domain", domain,
 				"payer", payment.PayerEmail,
+			)
+			return
+		}
+
+		// Skip stale payments — only re-activate members with recent payments.
+		// Without this check, domain matching re-activates inactive members with
+		// old payments (e.g. from 2024), causing them to oscillate between
+		// active/inactive on every run.
+		threshold := twelveMonthsAgo
+		if payment.Amount == 0 {
+			threshold = thirteenMonthsAgo
+		}
+		if payment.OrderDate.Before(threshold) {
+			logger.Debug("Skipping domain matching for stale payment",
+				"domain", domain,
+				"payer", payment.PayerEmail,
+				"paymentDate", payment.OrderDate.Format("2006-01-02"),
 			)
 			return
 		}
@@ -307,9 +327,6 @@ func main() {
 			Payment: payment,
 		}, true
 	})
-
-	twelveMonthsAgo := time.Now().AddDate(0, -12, 0)
-	thirteenMonthsAgo := time.Now().AddDate(0, -13, 0)
 
 	// Members with payments older than 12 months (13 months for free tiers) → send renewal email
 	membersToUpdatePaymentNeeded := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
@@ -421,6 +438,48 @@ func main() {
 
 	logger.Info("Finished deactivating members with no recent payment")
 
+	// --- Safety net: deactivate ANY active member whose LastPaymentDate is
+	// older than 13 months, or has no LastPaymentDate at all ---
+	// Runs after all other steps. Members with a recent HelloAsso entry
+	// already have their LastPaymentDate updated, so they won't match. This
+	// catches members activated by domain-matching with an old payment,
+	// members with stale data, and members with no payment date recorded.
+	staleMembers := lo.Filter(members, func(member baserow.Member, _ int) bool {
+		if !member.ActiveMembership {
+			return false
+		}
+		// No payment date at all → stale
+		if member.LastPaymentDate.IsZero() {
+			return true
+		}
+		return member.LastPaymentDate.Before(thirteenMonthsAgo)
+	})
+
+	logger.Info("Stale members to deactivate (LastPaymentDate > 13 months or missing)", "count", len(staleMembers))
+
+	lo.ForEach(staleMembers, func(member baserow.Member, _ int) {
+		member.ActiveMembership = false
+
+		if updateErr := baserow.UpdateMember(member); updateErr != nil {
+			logger.Error("Error deactivating stale member in Baserow",
+				"error", updateErr,
+				"member", member.Email,
+			)
+		} else {
+			lastPayment := "none"
+			if !member.LastPaymentDate.IsZero() {
+				lastPayment = member.LastPaymentDate.Format("2006-01-02")
+			}
+			logger.Info("Deactivated stale member",
+				"member", member.Email,
+				"id", member.Id,
+				"lastPayment", lastPayment,
+			)
+		}
+	})
+
+	logger.Info("Finished deactivating stale members")
+
 	/// ### Stats
 	generateStats(members, paymentsByEmail, logger, uniquePayments, membersByEmail)
 }
@@ -509,6 +568,25 @@ func sendEmailAndUpdate(pair MemberPaymentPair, logger *slog.Logger) {
 
 	member.ActiveMembership = false
 	member.LastPaymentDate = payment.OrderDate
+
+	// Free memberships: deactivate without sending renewal email.
+	// LastPaymentDate is set to the subscription date (payment.OrderDate) so
+	// the safety net and future runs can correctly assess staleness.
+	if payment.Amount == 0 {
+		logger.Debug("Free membership - setting LastPaymentDate from subscription date",
+			"member", member.Email,
+			"subscriptionDate", payment.OrderDate.Format("2006-01-02"),
+		)
+		if err := baserow.UpdateMember(member); err != nil {
+			logger.Error("Error updating free member in Baserow", "error", err, "member", member.Email)
+		} else {
+			logger.Info("Deactivated free member (no email)",
+				"member", member.Email,
+				"lastPaymentDate", member.LastPaymentDate.Format("2006-01-02"),
+			)
+		}
+		return
+	}
 
 	// Determine language preference
 	isFrench := false
