@@ -4,7 +4,7 @@
 
 Hello Asso renew contribution management script which do :
 
-- Gather payments from Hello Asso API.
+- Gather payments and free memberships from Hello Asso API.
 - Compare and update with association member in baserow.
 - Email needed people for contribution renew.
 
@@ -12,7 +12,7 @@ Hello Asso renew contribution management script which do :
 
  - [x] spo 1000 € cotisation
  - [ ] check limit of contribution email
- - [ ] without contribution ( Personne Physique - Sans Cotisation  and  Personne Morale - Cotisation déjà effectuée)
+ - [x] without contribution ( Personne Physique - Sans Cotisation, Individual - Free and Personne Morale - Cotisation déjà effectuée)
 
 ## Configuration
 

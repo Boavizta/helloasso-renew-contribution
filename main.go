@@ -155,6 +155,17 @@ func main() {
 
 	logger.Info("Successfully fetched payments", "count", len(payments))
 
+	freeMemberships, err := helloasso.GetFreeMembershipItems()
+	if err != nil {
+		logger.Error("Error fetching free membership items", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("Successfully fetched free membership items", "count", len(freeMemberships))
+
+	payments = append(payments, freeMemberships...)
+	logger.Info("Total contributions after merging free memberships", "count", len(payments))
+
 	// Filter payments to keep only those with form slugs "cotisation-annuelle" or "annual-membership-fee"
 	filteredPayments := lo.Filter(payments, func(payment helloasso.Payment, _ int) bool {
 		return payment.OrderFormSlug == "cotisation-annuelle" || payment.OrderFormSlug == "annual-membership-fee"
@@ -300,14 +311,21 @@ func main() {
 	twelveMonthsAgo := time.Now().AddDate(0, -12, 0)
 	thirteenMonthsAgo := time.Now().AddDate(0, -13, 0)
 
-	// Members with payments older than 12 months → send renewal email
+	// Members with payments older than 12 months (13 months for free tiers) → send renewal email
 	membersToUpdatePaymentNeeded := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
+		if pair.Payment.Amount == 0 {
+			return pair.Payment.OrderDate.Before(thirteenMonthsAgo)
+		}
 		return pair.Payment.OrderDate.Before(twelveMonthsAgo)
 	})
 
-	// Members with recent payments (≤12 months) that need status update
+	// Members with recent payments (≤12 months, ≤13 months for free tiers) that need status update
 	membersToUpdateStatusUpdate := lo.Filter(membersWithPayment, func(pair MemberPaymentPair, _ int) bool {
-		return !pair.Payment.OrderDate.Before(twelveMonthsAgo) &&
+		threshold := twelveMonthsAgo
+		if pair.Payment.Amount == 0 {
+			threshold = thirteenMonthsAgo
+		}
+		return !pair.Payment.OrderDate.Before(threshold) &&
 			(pair.Member.ActiveMembership == false || pair.Member.LastPaymentDate.Format("2006-01-02") != pair.Payment.OrderDate.Format("2006-01-02"))
 	})
 
