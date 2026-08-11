@@ -142,8 +142,12 @@ type MemberPaymentPair struct {
 }
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	// Ensure logs are flushed for containerized environments (Scaleway Serverless Jobs)
+	defer os.Stdout.Sync()
+	defer os.Stderr.Sync()
 
 	logger.Info("Starting HelloAsso payment fetcher")
 
