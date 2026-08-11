@@ -1,0 +1,61 @@
+name: Deploy to Scaleway Serverless Jobs
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: rg.fr-par.scw.cloud
+  REGISTRY_NAMESPACE: ${{ secrets.SCW_REGISTRY_NAMESPACE }}
+  IMAGE_NAME: helloasso-renew-contribution
+  JOB_NAME: helloasso-renew-contribution
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Scaleway CLI
+        uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Login to Container Registry
+        run: scw registry login region=fr-par
+
+      - name: Build Docker image
+        run: |
+          docker build --platform linux/amd64 \
+            -t $REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:${{ github.sha }} \
+            -t $REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:latest .
+
+      - name: Push to Container Registry
+        run: |
+          docker push $REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:${{ github.sha }}
+          docker push $REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:latest
+
+      - name: Create or update Job Definition
+        run: |
+          JOB_ID=$(scw jobs definition list --output json | jq -r --arg name "$JOB_NAME" '.[] | select(.name == $name) | .id // empty')
+
+          if [ -z "$JOB_ID" ]; then
+            echo "Creating new job definition..."
+            scw jobs definition create \
+              name=$JOB_NAME \
+              cpu-limit=560 \
+              memory-limit=1024 \
+              local-storage-capacity=1024 \
+              image-uri=$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:${{ github.sha }} \
+              region=fr-par
+          else
+            echo "Updating existing job definition $JOB_ID..."
+            scw jobs definition update $JOB_ID \
+              image-uri=$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:${{ github.sha }}
+          fi

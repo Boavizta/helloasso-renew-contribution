@@ -55,3 +55,52 @@ And reuse :
 ### Build binaries
 
 `make build-all`
+
+## Scaleway Deployment
+
+The project runs on [Scaleway Serverless Jobs](https://www.scaleway.com/en/serverless-jobs/) (fr-par) with a daily cron trigger at 6:00 AM (Europe/Paris).
+
+### One-time setup
+
+```bash
+# Requires scw CLI (brew install scw), Docker, and scw login done
+export SCW_DEFAULT_PROJECT_ID="<your-project-id>"
+./scripts/init-scaleway-job.sh
+```
+
+This creates:
+- **Container Registry** namespace `boavizta-registry`
+- **Docker image** built and pushed to the registry
+- **Job definition** with default env vars (placeholder values)
+- **Cron trigger** — daily at 6:00 AM Europe/Paris
+
+The script is idempotent: re-running it updates the image and skips already-existing resources.
+
+### Configure environment variables
+
+The init script sets **placeholder values** for all secrets. Update them with real values after the first run.
+
+**Via Scaleway Console:**
+Jobs → `helloasso-renew-contribution` → Environment Variables
+
+**Via CLI:**
+```bash
+scw jobs definition update <job-id> \
+  environment-variables.HELLOASSO_API_ID="real-value" \
+  environment-variables.HELLOASSO_API_SECRET="real-value" \
+  environment-variables.HELLOASSO_FROM_DATE="2024-01-01" \
+  environment-variables.HELLOASSO_ORG_SLUG="real-org-slug" \
+  environment-variables.BASEROW_API_TOKEN="real-value" \
+  environment-variables.BASEROW_MEMBER_TABLE_ID="12345" \
+  environment-variables.BREVO_API_KEY="real-value"
+```
+
+### Test run
+
+```bash
+scw jobs definition start <job-id>
+```
+
+### CI/CD
+
+Push to `main` triggers `.github/workflows/deploy.yml` which builds and deploys a new image automatically. Manual rollback available via `.github/workflows/rollback.yml` (workflow dispatch with tag input).

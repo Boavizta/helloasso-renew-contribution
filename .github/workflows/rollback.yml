@@ -1,0 +1,50 @@
+name: Rollback Scaleway Job
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Docker image tag to roll back to (e.g. abc1234 or latest)'
+        required: true
+        type: string
+        default: 'latest'
+
+env:
+  REGISTRY: rg.fr-par.scw.cloud
+  REGISTRY_NAMESPACE: ${{ secrets.SCW_REGISTRY_NAMESPACE }}
+  IMAGE_NAME: helloasso-renew-contribution
+  JOB_NAME: helloasso-renew-contribution
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Scaleway CLI
+        uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Find Job Definition
+        id: find-job
+        run: |
+          JOB_ID=$(scw jobs definition list --output json | jq -r --arg name "$JOB_NAME" '.[] | select(.name == $name) | .id // empty')
+          if [ -z "$JOB_ID" ]; then
+            echo "Error: Job definition '$JOB_NAME' not found"
+            exit 1
+          fi
+          echo "job-id=$JOB_ID" >> $GITHUB_OUTPUT
+
+      - name: Rollback Job Definition
+        run: |
+          scw jobs definition update ${{ steps.find-job.outputs.job-id }} \
+            image-uri=$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:${{ github.event.inputs.tag }}
+
+      - name: Validate Rollback
+        run: |
+          IMAGE=$(scw jobs definition get ${{ steps.find-job.outputs.job-id }} --output json | jq -r '.image_uri')
+          echo "Job now points to: $IMAGE"
