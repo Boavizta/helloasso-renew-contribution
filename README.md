@@ -58,7 +58,7 @@ And reuse :
 
 ## Scaleway Deployment
 
-The project runs on [Scaleway Serverless Jobs](https://www.scaleway.com/en/serverless-jobs/) (fr-par) with a daily cron trigger at 6:00 AM (Europe/Paris).
+The project runs on [Scaleway Serverless Jobs](https://www.scaleway.com/en/serverless-jobs/) (fr-par) with a weekly cron trigger every Monday at 6:00 AM (Europe/Paris).
 
 ### One-time setup
 
@@ -72,7 +72,7 @@ This creates:
 - **Container Registry** namespace `boavizta-registry`
 - **Docker image** built and pushed to the registry
 - **Job definition** with default env vars (placeholder values)
-- **Cron trigger** — daily at 6:00 AM Europe/Paris
+- **Cron trigger** — every Monday at 6:00 AM Europe/Paris
 
 The script is idempotent: re-running it updates the image and skips already-existing resources.
 

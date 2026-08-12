@@ -21,7 +21,7 @@ REGISTRY="rg.${REGION}.scw.cloud"
 REGISTRY_NAMESPACE="${SCW_REGISTRY_NAMESPACE:-boavizta-registry}"
 IMAGE_NAME="helloasso-renew-contribution"
 JOB_NAME="helloasso-renew-contribution"
-CRON_SCHEDULE="0 6 * * *"   # Daily at 6:00 AM
+CRON_SCHEDULE="0 6 * * 1"   # Every Monday at 6:00 AM
 CRON_TIMEZONE="Europe/Paris"
 
 # --- Colors ---
