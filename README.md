@@ -44,6 +44,7 @@ And reuse :
  - Country
  - PreferredLanguages
  - MembershipType
+ - Archived (boolean, read-only filter: archived members are excluded from the query and never processed nor updated)
 
 ## Run
 
