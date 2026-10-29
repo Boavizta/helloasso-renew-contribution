@@ -24,6 +24,7 @@ Following env var are required :
 - BASEROW_API_TOKEN
 - BASEROW_MEMBER_TABLE_ID : base row id of the member table
 - BREVO_API_KEY
+- DRY_RUN (optional) : `true` to log Baserow updates and emails instead of performing them
 
 ## Base row impact
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -150,6 +151,18 @@ func main() {
 	defer os.Stderr.Sync()
 
 	logger.Info("Starting HelloAsso payment fetcher")
+
+	// Validate DRY_RUN early: a typo must not silently turn into a real run
+	if dryRunValue := os.Getenv("DRY_RUN"); dryRunValue != "" {
+		dryRun, parseErr := strconv.ParseBool(dryRunValue)
+		if parseErr != nil {
+			logger.Error("Invalid environment variable", "variable", "DRY_RUN", "value", dryRunValue)
+			os.Exit(1)
+		}
+		if dryRun {
+			logger.Warn("DRY_RUN enabled: no Baserow update and no email will be sent")
+		}
+	}
 
 	payments, err := helloasso.GetPayments()
 	if err != nil {
