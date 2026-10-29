@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/boavizta/helloasso-renew-contribution/internal/domain"
 )
 
 const userAgent = "Boavizta-Renew-Contribution/1.0"
@@ -22,13 +23,23 @@ type TokenResponse struct {
 }
 
 // Payment represents the payment data we're interested in
-type Payment struct {
-	OrderFormSlug  string    `json:"orderFormSlug"`
-	OrderDate      time.Time `json:"orderDate"`
-	PayerEmail     string    `json:"payerEmail"`
-	PayerFirstName string    `json:"payerFirstName"`
-	PayerLastName  string    `json:"payerLastName"`
-	Amount         float64   `json:"payerAmount"`
+type Payment = domain.Payment
+
+type Config struct {
+	APIURL       string
+	ClientID     string
+	ClientSecret string
+	OrgSlug      string
+	FromDate     string
+}
+
+type Client struct {
+	config Config
+	http   *http.Client
+}
+
+func NewClient(config Config, client *http.Client) *Client {
+	return &Client{config: config, http: client}
 }
 
 // PaymentResponse represents the API response for payments
@@ -67,22 +78,14 @@ type PaymentResponse struct {
 }
 
 // getOAuthToken gets an OAuth token from the HelloAsso API
-func getOAuthToken() (string, error) {
-	clientID := os.Getenv("HELLOASSO_API_ID")
-	clientSecret := os.Getenv("HELLOASSO_API_SECRET")
-
-	if clientID == "" || clientSecret == "" {
-		slog.Error("Missing environment variables", "variables", "HELLOASSO_API_ID and HELLOASSO_API_SECRET")
-		return "", fmt.Errorf("HELLOASSO_API_ID and HELLOASSO_API_SECRET environment variables must be set")
-	}
-
+func (c *Client) getOAuthToken() (string, error) {
 	slog.Debug("Preparing OAuth token request")
 	data := url.Values{}
-	data.Set("client_id", clientID)
-	data.Set("client_secret", clientSecret)
+	data.Set("client_id", c.config.ClientID)
+	data.Set("client_secret", c.config.ClientSecret)
 	data.Set("grant_type", "client_credentials")
 
-	req, err := http.NewRequest("POST", "https://api.helloasso.com/oauth2/token", strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", c.config.APIURL+"/oauth2/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
 		return "", err
@@ -92,8 +95,7 @@ func getOAuthToken() (string, error) {
 	req.Header.Add("User-Agent", userAgent)
 
 	slog.Debug("Sending OAuth token request")
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		slog.Error("Failed to send request", "error", err)
 		return "", err
@@ -110,6 +112,9 @@ func getOAuthToken() (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		slog.Error("Failed to decode token response", "error", err)
 		return "", err
+	}
+	if tokenResp.AccessToken == "" {
+		return "", fmt.Errorf("HelloAsso returned an empty access token")
 	}
 
 	slog.Debug("OAuth token obtained successfully")
@@ -151,20 +156,16 @@ type ItemResponse struct {
 }
 
 // getPayments fetches payments from the HelloAsso API
-func GetPayments() ([]Payment, error) {
+func (c *Client) GetPayments() ([]Payment, error) {
 	slog.Info("Getting OAuth token...")
-	token, err := getOAuthToken()
+	token, err := c.getOAuthToken()
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("OAuth token obtained successfully")
 
-	orgSlug := os.Getenv("HELLOASSO_ORG_SLUG")
-	fromDate := os.Getenv("HELLOASSO_FROM_DATE")
-
-	if orgSlug == "" || fromDate == "" {
-		return nil, fmt.Errorf("HELLOASSO_ORG_SLUG and HELLOASSO_FROM_DATE environment variables must be set")
-	}
+	orgSlug := c.config.OrgSlug
+	fromDate := c.config.FromDate
 
 	slog.Info("Fetching payments for organization", "org", orgSlug, "from", fromDate)
 
@@ -173,8 +174,8 @@ func GetPayments() ([]Payment, error) {
 
 	for {
 		slog.Info("Fetching page of payments", "page", pageIndex)
-		apiURL := fmt.Sprintf("https://api.helloasso.com/v5/organizations/%s/payments?pageSize=100&from=%s&pageIndex=%d&states=Authorized&states=Registered",
-			orgSlug, fromDate, pageIndex)
+		apiURL := fmt.Sprintf("%s/v5/organizations/%s/payments?pageSize=100&from=%s&pageIndex=%d&states=Authorized&states=Registered",
+			c.config.APIURL, url.PathEscape(orgSlug), url.QueryEscape(fromDate), pageIndex)
 
 		req, err := http.NewRequest("GET", apiURL, nil)
 		if err != nil {
@@ -184,8 +185,7 @@ func GetPayments() ([]Payment, error) {
 		req.Header.Add("Authorization", "Bearer "+token)
 		req.Header.Add("User-Agent", userAgent)
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := c.http.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -239,20 +239,16 @@ func GetPayments() ([]Payment, error) {
 // GetFreeMembershipItems fetches free membership items from the HelloAsso API.
 // Free memberships (e.g. "Personne Physique - Sans Cotisation" or "Individual - Free")
 // do not generate payments, so they must be retrieved through the items endpoint.
-func GetFreeMembershipItems() ([]Payment, error) {
+func (c *Client) GetFreeMembershipItems() ([]Payment, error) {
 	slog.Info("Getting OAuth token for free membership items...")
-	token, err := getOAuthToken()
+	token, err := c.getOAuthToken()
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("OAuth token obtained successfully")
 
-	orgSlug := os.Getenv("HELLOASSO_ORG_SLUG")
-	fromDate := os.Getenv("HELLOASSO_FROM_DATE")
-
-	if orgSlug == "" || fromDate == "" {
-		return nil, fmt.Errorf("HELLOASSO_ORG_SLUG and HELLOASSO_FROM_DATE environment variables must be set")
-	}
+	orgSlug := c.config.OrgSlug
+	fromDate := c.config.FromDate
 
 	slog.Info("Fetching free membership items for organization", "org", orgSlug, "from", fromDate)
 
@@ -262,8 +258,8 @@ func GetFreeMembershipItems() ([]Payment, error) {
 	for {
 		slog.Info("Fetching page of membership items", "page", pageIndex)
 		apiURL := fmt.Sprintf(
-			"https://api.helloasso.com/v5/organizations/%s/items?pageSize=100&from=%s&pageIndex=%d&tierTypes=Membership&itemStates=Processed&itemStates=Registered",
-			orgSlug, fromDate, pageIndex,
+			"%s/v5/organizations/%s/items?pageSize=100&from=%s&pageIndex=%d&tierTypes=Membership&itemStates=Processed&itemStates=Registered",
+			c.config.APIURL, url.PathEscape(orgSlug), url.QueryEscape(fromDate), pageIndex,
 		)
 
 		req, err := http.NewRequest("GET", apiURL, nil)
@@ -274,8 +270,7 @@ func GetFreeMembershipItems() ([]Payment, error) {
 		req.Header.Add("Authorization", "Bearer "+token)
 		req.Header.Add("User-Agent", userAgent)
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := c.http.Do(req)
 		if err != nil {
 			return nil, err
 		}

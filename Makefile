@@ -1,3 +1,12 @@
+.PHONY: test test-cover build build-all build-darwin-arm64 build-linux-amd64 build-linux-arm64
+
+test:
+	go test -race ./...
+
+test-cover:
+	go test -race -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+
 build:
 	go build -o bin/helloasso-renew-contribution
 

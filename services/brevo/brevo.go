@@ -7,19 +7,26 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"strconv"
+
+	"github.com/boavizta/helloasso-renew-contribution/internal/domain"
 )
 
 // EmailData represents the data needed to send an email
-type EmailData struct {
-	SenderName  string
-	SenderEmail string
-	ToEmail     string
-	ToName      string
-	Subject     string
-	HtmlContent string
-	TextContent string
+type EmailData = domain.Email
+
+type Config struct {
+	APIURL string
+	APIKey string
+	DryRun bool
+}
+
+type Client struct {
+	config Config
+	http   *http.Client
+}
+
+func NewClient(config Config, client *http.Client) *Client {
+	return &Client{config: config, http: client}
 }
 
 // SendEmailRequest represents the request body for the Brevo API
@@ -43,22 +50,11 @@ type Recipient struct {
 	Name  string `json:"name"`
 }
 
-// isDryRun reports whether DRY_RUN is enabled: emails are logged instead of sent.
-func isDryRun() bool {
-	dryRun, _ := strconv.ParseBool(os.Getenv("DRY_RUN"))
-	return dryRun
-}
-
 // SendEmail sends an email using the Brevo API
-func SendEmail(data EmailData) error {
-	apiKey := os.Getenv("BREVO_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("BREVO_API_KEY environment variable must be set")
-	}
-
+func (c *Client) SendEmail(data EmailData) error {
 	slog.Info("Preparing to send email", "to", data.ToEmail)
 
-	if isDryRun() {
+	if c.config.DryRun {
 		slog.Info("DRY_RUN: skipping email send", "to", data.ToEmail, "subject", data.Subject)
 		return nil
 	}
@@ -87,7 +83,7 @@ func SendEmail(data EmailData) error {
 	}
 
 	// Create the HTTP request
-	req, err := http.NewRequest("POST", "https://api.sendinblue.com/v3/smtp/email", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", c.config.APIURL+"/v3/smtp/email", bytes.NewBuffer(jsonData))
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
 		return err
@@ -95,11 +91,10 @@ func SendEmail(data EmailData) error {
 
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("api-key", apiKey)
+	req.Header.Set("api-key", c.config.APIKey)
 
 	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		slog.Error("Failed to send request", "error", err)
 		return err
