@@ -45,6 +45,26 @@ Optional overrides (the existing deployment values remain the defaults):
 API URLs are base URLs, without query strings or fragments. Outgoing HTTP
 requests have a 30-second timeout. The program does not load `.env` itself.
 
+### Share a local `.env` across worktrees
+
+Keep the reference `.env` outside the repository, then install the versioned hook:
+
+```bash
+make install-worktree-env ENV_SOURCE=/absolute/path/to/reference/.env
+```
+
+The installer copies `scripts/hooks/post-checkout` into the shared Git hooks
+directory (not a temporary worktree) and stores the reference path in local Git
+configuration. Run it once per clone, and again after updating the hook.
+It also links the current worktree if `.env` is absent. Future checkouts and
+normal `git worktree add` operations link `.env` automatically; existing files
+and symlinks are never overwritten. All linked worktrees share the same secrets.
+
+The reference file and its path are not committed. Its volume must be mounted.
+Worktrees created with `--no-checkout` skip the hook; run the installer there
+after checkout if needed. Existing unrelated hooks or custom `core.hooksPath`
+settings require manual integration; the installer will not replace them.
+
 ## Architecture
 
 The application follows hexagonal architecture (ports and adapters):

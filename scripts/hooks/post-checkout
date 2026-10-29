@@ -1,0 +1,8 @@
+#!/bin/sh
+# Share local secrets across worktrees without overwriting existing settings.
+SOURCE="$(git config --get worktreeEnv.source)" || exit 0
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+if [ -f "$SOURCE" ] && [ ! -e "$ROOT/.env" ] && [ ! -L "$ROOT/.env" ]; then
+  ln -s "$SOURCE" "$ROOT/.env"
+fi
