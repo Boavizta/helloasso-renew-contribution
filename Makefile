@@ -1,4 +1,7 @@
-.PHONY: test test-cover build build-all build-darwin-arm64 build-linux-amd64 build-linux-arm64
+.PHONY: test test-cover build build-all build-darwin-arm64 build-linux-amd64 build-linux-arm64 install-worktree-env
+
+install-worktree-env:
+	sh scripts/install-worktree-env.sh "$(ENV_SOURCE)"
 
 test:
 	go test -race ./...

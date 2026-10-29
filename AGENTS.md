@@ -1,5 +1,11 @@
 # Development Guidelines
 
+## Worktree setup
+
+- At the start of each session, read the shared reference path with `git config --get worktreeEnv.source`. If configured and the file exists, run `make install-worktree-env ENV_SOURCE="<configured path>"` to refresh the shared hook and link this worktree's `.env` when absent.
+- If the reference is unavailable or installation reports a hook conflict, report it and continue work that needs no credentials. When credentials are required and no reference is configured, ask the user for the absolute reference `.env` path, then run the same installer. See README's “Share a local `.env` across worktrees” section for setup details.
+- Preserve existing `.env` files and symlinks. Keep secret contents out of output and commits; setup only links the file and does not authorize production API calls.
+
 ## Hexagonal architecture
 
 - `internal/domain` owns membership models, matching/expiry policy, update planning, and renewal-email rendering. Keep it pure: pass the current time and email settings as arguments. Dependencies point inward; this package imports neither adapters nor application code, environment access, HTTP, or logging.
