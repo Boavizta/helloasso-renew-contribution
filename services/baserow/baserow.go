@@ -51,7 +51,8 @@ func GetMembers() ([]Member, error) {
 	if tableID == "" {
 		return nil, fmt.Errorf("BASEROW_MEMBER_TABLE_ID environment variable must be set")
 	}
-	apiURL := fmt.Sprintf("https://baserow.boavizta.org/api/database/rows/table/%s/?user_field_names=true", tableID)
+	// Archived members are excluded server-side: they must never be read or updated by this program.
+	apiURL := fmt.Sprintf("https://baserow.boavizta.org/api/database/rows/table/%s/?user_field_names=true&filter__Archived__boolean=false", tableID)
 
 	client := &http.Client{}
 	var members []Member
