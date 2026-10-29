@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -134,6 +135,12 @@ func GetMembers() ([]Member, error) {
 	return members, nil
 }
 
+// isDryRun reports whether DRY_RUN is enabled: writes are logged instead of sent.
+func isDryRun() bool {
+	dryRun, _ := strconv.ParseBool(os.Getenv("DRY_RUN"))
+	return dryRun
+}
+
 // Helper functions to safely extract values from the map
 func getStringValue(data map[string]interface{}, key string) string {
 	if val, ok := data[key].(string); ok {
@@ -233,6 +240,11 @@ func UpdateMember(member Member) error {
 	if err != nil {
 		slog.Error("Failed to marshal update payload", "error", err)
 		return err
+	}
+
+	if isDryRun() {
+		slog.Info("DRY_RUN: skipping Baserow update", "id", member.Id, "email", member.Email, "payload", string(payloadBytes))
+		return nil
 	}
 
 	client := &http.Client{}

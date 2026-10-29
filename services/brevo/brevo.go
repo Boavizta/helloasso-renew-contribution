@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 // EmailData represents the data needed to send an email
@@ -42,6 +43,12 @@ type Recipient struct {
 	Name  string `json:"name"`
 }
 
+// isDryRun reports whether DRY_RUN is enabled: emails are logged instead of sent.
+func isDryRun() bool {
+	dryRun, _ := strconv.ParseBool(os.Getenv("DRY_RUN"))
+	return dryRun
+}
+
 // SendEmail sends an email using the Brevo API
 func SendEmail(data EmailData) error {
 	apiKey := os.Getenv("BREVO_API_KEY")
@@ -50,6 +57,11 @@ func SendEmail(data EmailData) error {
 	}
 
 	slog.Info("Preparing to send email", "to", data.ToEmail)
+
+	if isDryRun() {
+		slog.Info("DRY_RUN: skipping email send", "to", data.ToEmail, "subject", data.Subject)
+		return nil
+	}
 
 	// Prepare the request body
 	reqBody := SendEmailRequest{
