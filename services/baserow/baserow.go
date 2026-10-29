@@ -7,31 +7,38 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
+
+	"github.com/boavizta/helloasso-renew-contribution/internal/domain"
+	"github.com/samber/lo"
 )
 
 // Member represents a member from the Baserow table with the required columns.
 // Id is the Baserow row ID (auto-generated, lowercase "id" in API responses),
 // used as the identifier in update/delete API calls.
-type Member struct {
-	Id                        int       `json:"Id"`
-	Surname                   string    `json:"Surname"`
-	FirstName                 string    `json:"First name"`
-	Email                     string    `json:"E-mail"`
-	AlternativeEmail1         string    `json:"AlternativeEmail1"`
-	AlternativeEmail2         string    `json:"AlternativeEmail2"`
-	ActiveMembership          bool      `json:"Active MemberShip"`
-	LastPaymentDate           time.Time `json:"Last Payment Date"`
-	LastContributionEmailDate time.Time `json:"Last Contribution Email Date"`
-	NumberContributionsEmail  int       `json:"Number of Contributions Email"`
-	MembershipType            int       `json:"Membership Type"`
-	PreferredLanguages        []int     `json:"Preferred languages"`
-	Country                   string    `json:"Country"`
+type Member = domain.Member
+
+type Config struct {
+	APIURL   string
+	APIToken string
+	TableID  string
+	DryRun   bool
 }
 
-// BaserowResponse represents the API response from Baserow
+type Client struct {
+	config Config
+	http   *http.Client
+}
+
+func NewClient(config Config, client *http.Client) *Client {
+	return &Client{config: config, http: client}
+}
+
+// Baserow select IDs are adapter details, not domain vocabulary.
+var membershipTypes = map[int]string{2521: domain.IndividualMembership, 2520: domain.OrganizationMembership}
+var languages = map[int]string{2590: domain.EnglishLanguage, 2591: domain.FrenchLanguage, 2592: domain.SpanishLanguage}
+
+// BaserowResponse represents the API response from Baserow.
 type BaserowResponse struct {
 	Count    int                      `json:"count"`
 	Next     string                   `json:"next"`
@@ -40,22 +47,12 @@ type BaserowResponse struct {
 }
 
 // GetMembers fetches all members from the Baserow API
-func GetMembers() ([]Member, error) {
+func (c *Client) GetMembers() ([]Member, error) {
 	slog.Info("Fetching members from Baserow")
 
-	apiToken := os.Getenv("BASEROW_API_TOKEN")
-	if apiToken == "" {
-		return nil, fmt.Errorf("BASEROW_API_TOKEN environment variable must be set")
-	}
-
-	tableID := os.Getenv("BASEROW_MEMBER_TABLE_ID")
-	if tableID == "" {
-		return nil, fmt.Errorf("BASEROW_MEMBER_TABLE_ID environment variable must be set")
-	}
 	// Archived members are excluded server-side: they must never be read or updated by this program.
-	apiURL := fmt.Sprintf("https://baserow.boavizta.org/api/database/rows/table/%s/?user_field_names=true&filter__Archived__boolean=false", tableID)
+	apiURL := fmt.Sprintf("%s/api/database/rows/table/%s/?user_field_names=true&filter__Archived__boolean=false", c.config.APIURL, c.config.TableID)
 
-	client := &http.Client{}
 	var members []Member
 
 	// Loop to handle pagination
@@ -66,9 +63,9 @@ func GetMembers() ([]Member, error) {
 			return nil, err
 		}
 
-		req.Header.Add("Authorization", "Token "+apiToken)
+		req.Header.Add("Authorization", "Token "+c.config.APIToken)
 
-		resp, err := client.Do(req)
+		resp, err := c.http.Do(req)
 		if err != nil {
 			slog.Error("Failed to send request", "error", err)
 			return nil, err
@@ -101,8 +98,11 @@ func GetMembers() ([]Member, error) {
 				Country:                  getLinkedValue(result, "Country"),
 				ActiveMembership:         getBoolValue(result, "Active MemberShip"),
 				NumberContributionsEmail: getIntValue(result, "Number of Contributions Email"),
-				MembershipType:           getSelectId(result, "Membership type"),
-				PreferredLanguages:       getMultiSelectIds(result, "Preferred languages"),
+				MembershipType:           membershipTypes[getSelectId(result, "Membership type")],
+				PreferredLanguages: lo.FilterMap(getMultiSelectIds(result, "Preferred languages"), func(id int, _ int) (string, bool) {
+					language, ok := languages[id]
+					return language, ok
+				}),
 			}
 
 			// Handle the date fields separately as they require parsing
@@ -133,12 +133,6 @@ func GetMembers() ([]Member, error) {
 
 	slog.Info("Successfully fetched all members from Baserow", "count", len(members))
 	return members, nil
-}
-
-// isDryRun reports whether DRY_RUN is enabled: writes are logged instead of sent.
-func isDryRun() bool {
-	dryRun, _ := strconv.ParseBool(os.Getenv("DRY_RUN"))
-	return dryRun
 }
 
 // Helper functions to safely extract values from the map
@@ -213,26 +207,16 @@ func getMultiSelectIds(data map[string]interface{}, key string) []int {
 }
 
 // UpdateMember updates a member's information in the Baserow database
-func UpdateMember(member Member) error {
+func (c *Client) UpdateMember(member Member) error {
 	slog.Debug("Updating member in Baserow", "id", member.Id, "email", member.Email)
 
-	apiToken := os.Getenv("BASEROW_API_TOKEN")
-	if apiToken == "" {
-		return fmt.Errorf("BASEROW_API_TOKEN environment variable must be set")
-	}
-
-	tableID := os.Getenv("BASEROW_MEMBER_TABLE_ID")
-	if tableID == "" {
-		return fmt.Errorf("BASEROW_MEMBER_TABLE_ID environment variable must be set")
-
-	}
-	apiURL := fmt.Sprintf("https://baserow.boavizta.org/api/database/rows/table/%s/%d/?user_field_names=true", tableID, member.Id)
+	apiURL := fmt.Sprintf("%s/api/database/rows/table/%s/%d/?user_field_names=true", c.config.APIURL, c.config.TableID, member.Id)
 
 	// Prepare the update payload
 	payload := map[string]interface{}{
 		"Active MemberShip":             member.ActiveMembership,
-		"Last Payment Date":             member.LastPaymentDate.Format("2006-01-02"),
-		"Last Contribution Email Date":  member.LastContributionEmailDate.Format("2006-01-02"),
+		"Last Payment Date":             dateValue(member.LastPaymentDate),
+		"Last Contribution Email Date":  dateValue(member.LastContributionEmailDate),
 		"Number of Contributions Email": member.NumberContributionsEmail,
 	}
 
@@ -242,22 +226,21 @@ func UpdateMember(member Member) error {
 		return err
 	}
 
-	if isDryRun() {
+	if c.config.DryRun {
 		slog.Info("DRY_RUN: skipping Baserow update", "id", member.Id, "email", member.Email, "payload", string(payloadBytes))
 		return nil
 	}
 
-	client := &http.Client{}
 	req, err := http.NewRequest("PATCH", apiURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		slog.Error("Failed to create update request", "error", err)
 		return err
 	}
 
-	req.Header.Add("Authorization", "Token "+apiToken)
+	req.Header.Add("Authorization", "Token "+c.config.APIToken)
 	req.Header.Add("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		slog.Error("Failed to send update request", "error", err)
 		return err
@@ -272,4 +255,11 @@ func UpdateMember(member Member) error {
 
 	slog.Info("Successfully updated member in Baserow", "id", member.Id, "email", member.Email)
 	return nil
+}
+
+func dateValue(date time.Time) any {
+	if date.IsZero() {
+		return nil
+	}
+	return date.Format(time.DateOnly)
 }
